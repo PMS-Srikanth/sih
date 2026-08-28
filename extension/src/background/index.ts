@@ -1,0 +1,509 @@
+/**
+ * Service worker — the orchestrator, and the only process that ever holds real
+ * values. The page cannot reach here; the network only sees what the verifier
+ * has cleared.
+ */
+import type {
+  AgentAction, AgentState, ContentResponse, HistoryEntry, Mode, PanelMessage,
+  EnteredValue, PrivacyReceipt, RawScreenGraph, ServerResponse, StageTimings, StepLog,
+} from "@/shared/types";
+import { detectDom } from "@/privacy/detectors/dom";
+import { detectRegex } from "@/privacy/detectors/regex";
+import { fuse } from "@/privacy/fusion";
+import { redact } from "@/privacy/redactor";
+import { harden, verify, VERIFIER_VERSION } from "@/privacy/verifier";
+import { isHandle, Vault } from "@/privacy/vault";
+import {
+  destroy as vaultDestroy, lock as vaultLock, loadProfile, saveProfile,
+  setup as vaultSetup, slotFor, status as vaultStatus, unlock as vaultUnlock, type Profile,
+} from "@/privacy/profile";
+import { fnv1a } from "@/privacy/checksums";
+import { route } from "@/agent/router";
+import { checkPolicy } from "@/agent/policy";
+import { DEFAULT_SERVER, send } from "./transport";
+import { captureViewport, encode, maskRegions, planVision, verifyMasks } from "./capture";
+import { detectFaces, warmup } from "./vision";
+
+const MAX_STEPS = 25;
+
+const state: AgentState = {
+  running: false,
+  task: "",
+  mode: "balanced",
+  serverUrl: DEFAULT_SERVER,
+  steps: [],
+  awaitingConfirm: null,
+};
+
+let vault = new Vault();
+let history: HistoryEntry[] = [];
+let tabId: number | null = null;
+let windowId: number | null = null;
+/** Set when the server replies need_image; the next payload carries one frame. */
+let needImage = false;
+let confirmResolver: ((ok: boolean) => void) | null = null;
+let stopRequested = false;
+
+/** Stop after this many consecutive steps that leave the page unchanged. */
+const NO_PROGRESS_LIMIT = 2;
+
+chrome.storage.local.get(["serverUrl", "mode"]).then((s) => {
+  if (typeof s.serverUrl === "string") state.serverUrl = s.serverUrl;
+  if (s.mode) state.mode = s.mode as Mode;
+});
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.sidePanel?.setPanelBehavior?.({ openPanelOnActionClick: true }).catch(() => {});
+  void warmup();
+});
+
+chrome.runtime.onMessage.addListener((msg: PanelMessage, _sender, respond) => {
+  (async () => {
+    switch (msg.kind) {
+      case "getState":
+        respond(state);
+        return;
+      case "getProfile":
+        respond({ profile: await loadProfile(), vault: await vaultStatus() });
+        return;
+      case "setProfile": {
+        const r = await saveProfile(msg.values);
+        respond({ ...r, profile: await loadProfile(), vault: await vaultStatus() });
+        return;
+      }
+      case "vaultStatus":
+        respond(await vaultStatus());
+        return;
+      case "vaultSetup": {
+        const r = await vaultSetup(msg.passphrase);
+        respond({ ...r, profile: await loadProfile(), vault: await vaultStatus() });
+        return;
+      }
+      case "vaultUnlock": {
+        const r = await vaultUnlock(msg.passphrase);
+        respond({ ...r, profile: await loadProfile(), vault: await vaultStatus() });
+        return;
+      }
+      case "vaultLock":
+        await vaultLock();
+        respond({ ok: true, profile: null, vault: await vaultStatus() });
+        return;
+      case "vaultDestroy":
+        await vaultDestroy();
+        respond({ ok: true, profile: null, vault: await vaultStatus() });
+        return;
+      case "setServer":
+        state.serverUrl = msg.url || DEFAULT_SERVER;
+        await chrome.storage.local.set({ serverUrl: state.serverUrl });
+        respond(state);
+        return;
+      case "stop":
+        stopRequested = true;
+        state.running = false;
+        confirmResolver?.(false);
+        respond(state);
+        return;
+      case "confirm":
+        confirmResolver?.(msg.approve);
+        confirmResolver = null;
+        state.awaitingConfirm = null;
+        respond(state);
+        return;
+      case "run":
+        respond({ ...state, running: true });
+        await runTask(msg.task, msg.mode);
+        return;
+      default:
+        respond(state);
+    }
+  })();
+  return true;
+});
+
+// ── the loop ───────────────────────────────────────────────────────────────
+
+async function runTask(task: string, mode: Mode): Promise<void> {
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (!tab?.id) return fail("no active tab");
+  tabId = tab.id;
+  windowId = tab.windowId ?? null;
+  needImage = false;
+
+  vault = new Vault();
+  history = [];
+  stopRequested = false;
+  // Null when the vault is locked or has never been set up. The agent then
+  // simply has nothing to offer a blank form — it does not fall back to
+  // unencrypted storage.
+  const profile: Profile | null = await loadProfile();
+  Object.assign(state, { running: true, task, mode, steps: [], awaitingConfirm: null, answer: undefined, error: undefined });
+  await chrome.storage.local.set({ mode });
+  push();
+
+  let lastFingerprint = "";
+  let stalled = 0;
+
+  for (let step = 1; step <= MAX_STEPS && !stopRequested; step++) {
+    const t: StageTimings = { capture: 0, perceive: 0, detect: 0, redact: 0, verify: 0, network: 0, execute: 0, total: 0 };
+    const t0 = performance.now();
+
+    // ── 1 · capture + perceive ────────────────────────────────────────────
+    const mark = performance.now();
+    const graph = await perceive(mode);
+    if (!graph) return fail("could not read the page — try reloading the tab");
+    t.capture = round(performance.now() - mark);
+    t.perceive = graph.perceiveMs;
+
+    // ── 1b · progress check ───────────────────────────────────────────────
+    // An agent that keeps acting on a page it is not changing is looping. Two
+    // identical page states in a row is enough evidence to stop.
+    const fingerprint = fingerprintOf(graph);
+    if (step > 1 && fingerprint === lastFingerprint) {
+      stalled++;
+      if (stalled >= NO_PROGRESS_LIMIT) {
+        log({
+          step,
+          route: "done",
+          result: "ok",
+          note: `page unchanged after ${stalled} step(s) — stopping rather than looping`,
+          timings: done(t, t0),
+        });
+        state.running = false;
+        push();
+        return;
+      }
+    } else {
+      stalled = 0;
+    }
+    lastFingerprint = fingerprint;
+
+    // ── 2 · route: is the server needed at all? ───────────────────────────
+    const decision = route(graph, task, step - 1);
+
+    let action: AgentAction | null = null;
+    let thought = "";
+    let receipt: PrivacyReceipt | undefined;
+    let routeKind: StepLog["route"] = "local";
+
+    if (decision.route === "local") {
+      action = decision.action;
+      thought = `resolved on device — ${decision.why}`;
+    } else {
+      routeKind = "server";
+
+      // ── 3 · detect ──────────────────────────────────────────────────────
+      let mk = performance.now();
+      const detections = [...detectDom(graph.elements), ...detectRegex(graph.elements)];
+      const findings = fuse({ elements: graph.elements, detections });
+      t.detect = round(performance.now() - mk);
+
+      // ── 4 · redact ──────────────────────────────────────────────────────
+      mk = performance.now();
+      let { context, applied, stats } = redact({ graph, findings, vault, task, mode, history, profile });
+      t.redact = round(performance.now() - mk);
+
+      // Show what was ACTUALLY redacted, plus which blank fields the local
+      // profile could serve. A detector firing on an empty field is a correct
+      // classification, not a redaction, and must not be drawn as one.
+      void chrome.tabs
+        .sendMessage(tabId, {
+          kind: "showRedactions",
+          findings: applied,
+          fillable: context.elements.filter((e) => e.wants).map((e) => ({ id: e.id, handle: e.wants! })),
+        })
+        .catch(() => {});
+
+      // ── 4b · pixels ─────────────────────────────────────────────────────
+      // Fast mode never captures. Otherwise: capture, work out where a vision
+      // model would have to look, paint solid masks over the regions the
+      // privacy engine flagged, and confirm they actually landed.
+      let visionNote = "";
+      let maskCheck: { ok: boolean; checked: number; failed: number } | null = null;
+
+      if (mode !== "fast" && windowId != null) {
+        const mkc = performance.now();
+        const cap = await captureViewport(windowId);
+        if (cap) {
+          const plan = planVision(cap, graph.elements, graph.viewport, mode);
+
+          // Regions the DOM flagged from semantics — an <img> called "ID proof".
+          const toMask: Array<{ bbox: typeof graph.elements[number]["bbox"] }> = applied
+            .filter((f) => f.fate === "mask")
+            .map((f) => graph.elements.find((e) => e.id === f.elementId))
+            .filter((e): e is NonNullable<typeof e> => !!e)
+            .map((e) => ({ bbox: e.bbox }));
+
+          // The model reads the actual pixels. This is what finds a face the
+          // DOM has no words for.
+          const vision = await detectFaces(cap, plan.regions);
+          for (const f of vision.faces) {
+            toMask.push({ bbox: { x: f.x, y: f.y, w: f.w, h: f.h } });
+            context.regions.push({
+              bbox: [Math.round(f.x), Math.round(f.y), Math.round(f.w), Math.round(f.h)],
+              cls: "face",
+              state: "masked",
+            });
+            stats.masked++;
+          }
+
+          const painted = maskRegions(cap, toMask);
+          maskCheck = verifyMasks(cap, toMask);
+
+          if (needImage) {
+            context.image = await encode(cap);
+            needImage = false;
+          }
+
+          t.capture = round(performance.now() - mkc);
+          visionNote =
+            `${vision.provider} · ${vision.passes} pass(es) ${vision.inferMs}ms · ` +
+            `DOM explains ${plan.coveragePct}% · ${plan.regions.length} region(s) inspected · ` +
+            `${vision.faces.length} face(s) found · ${painted} mask(s) painted` +
+            (vision.error ? ` · ${vision.error}` : "");
+        } else {
+          // Silent failure here would look like "vision is off" rather than
+          // "the browser refused", so say which it was.
+          visionNote = "frame capture unavailable on this page";
+        }
+      }
+
+      // ── 5 · verify, with V6 escalation ──────────────────────────────────
+      mk = performance.now();
+      let v = verify(context, vault, maskCheck);
+      let retries = 0;
+      while (!v.passed && retries < 2) {
+        retries++;
+        context = harden(context);
+        v = verify(context, vault);
+      }
+      t.verify = round(performance.now() - mk);
+
+      const bySource: PrivacyReceipt["bySource"] = {};
+      for (const f of findings) for (const s of f.sources) bySource[s] = (bySource[s] ?? 0) + 1;
+
+      receipt = {
+        step,
+        at: Date.now(),
+        counts: stats.counts,
+        bySource,
+        dropped: stats.dropped,
+        substituted: stats.substituted,
+        masked: stats.masked,
+        kept: stats.kept,
+        payloadBytes: v.bytes,
+        payloadHash: v.hash,
+        verifier: { version: VERIFIER_VERSION, passed: v.passed, checks: v.checks, retries },
+      };
+
+      if (visionNote) receipt.vision = visionNote;
+      // Pretty-printed so a human can actually read what left the machine.
+      receipt.payload = JSON.stringify(JSON.parse(v.payload), null, 1).slice(0, 24_000);
+      if (context.image) receipt.imageBytes = context.image.length;
+
+      if (!v.passed) {
+        log({ step, route: "server", result: "blocked", thought: "verifier refused to transmit", timings: done(t, t0), receipt });
+        return fail("Privacy verifier refused to transmit. Nothing was sent.");
+      }
+
+      // ── 6 · transmit ────────────────────────────────────────────────────
+      mk = performance.now();
+      const res: ServerResponse = await send(state.serverUrl, v.payload);
+      t.network = round(performance.now() - mk);
+
+      const handled = await handleResponse(res, step, t, t0, receipt);
+      if (handled.stop) return;
+      action = handled.action;
+      thought = handled.thought;
+      routeKind = handled.route;
+      if (!action) continue;
+    }
+
+    // ── 7 · repeat guard ────────────────────────────────────────────────────
+    // A click or fill that already succeeded on this target means the work is
+    // done, or the agent is looping. Either way, stop rather than doing it twice.
+    if (
+      (action.kind === "click" || action.kind === "fill") &&
+      history.some((h) => h.action === action!.kind && h.target === action!.target && h.result === "ok")
+    ) {
+      log({
+        step,
+        route: "done",
+        thought,
+        action,
+        result: "ok",
+        note: `already ${action.kind === "click" ? "clicked" : "filled"} this target — nothing left to do`,
+        timings: done(t, t0),
+        receipt,
+      });
+      state.running = false;
+      push();
+      return;
+    }
+
+    // ── 8 · policy + execute ────────────────────────────────────────────────
+    const el = graph.elements.find((e) => e.id === action!.target);
+    const verdict = checkPolicy(action, el, vault, step - 1, false);
+
+    if (!verdict.allow) {
+      history.push({ action: action.kind, target: action.target, result: "blocked", note: verdict.reason });
+      log({ step, route: routeKind, thought, action, result: "blocked", note: verdict.reason, timings: done(t, t0), receipt });
+      if (routeKind === "local") return fail(verdict.reason);
+      continue; // let the server try something else
+    }
+
+    if (verdict.confirm) {
+      state.awaitingConfirm = { action, why: verdict.confirm };
+      push();
+      const approved = await waitForConfirm();
+      state.awaitingConfirm = null;
+      if (!approved) {
+        history.push({ action: action.kind, target: action.target, result: "blocked", note: "declined by user" });
+        log({ step, route: routeKind, thought, action, result: "blocked", note: "declined by user", timings: done(t, t0), receipt });
+        return fail("Stopped — you declined the action.");
+      }
+    }
+
+    const mk2 = performance.now();
+    const exec = (await chrome.tabs.sendMessage(tabId, {
+      kind: "execute",
+      action,
+      resolved: verdict.resolved,
+      expectSig: el?.sig,
+    })) as ContentResponse;
+    t.execute = round(performance.now() - mk2);
+
+    const ok = exec.ok === true;
+    const note = ok ? ("note" in exec ? exec.note : undefined) : (exec as { error: string }).error;
+    const ingest = "ingest" in exec ? exec.ingest : undefined;
+
+    // Record what was typed, so the user can review their own run. The vault
+    // entry tells us which slot it came from; el.name gives the human label.
+    let entered: EnteredValue | undefined;
+    if (ok && action.kind === "fill" && verdict.resolved) {
+      const handle = action.value && isHandle(action.value) ? vault.get(action.value.trim()) : undefined;
+      entered = {
+        field: el?.name || el?.label || action.target || "field",
+        cls: handle?.cls ?? "value",
+        value: verdict.resolved,
+        source: profile && handle && slotFor(profile, handle.cls) ? "profile" : "page",
+      };
+    }
+    history.push({ action: action.kind, target: action.target, result: ok ? "ok" : "failed", note });
+    log({ step, route: routeKind, thought, action, result: ok ? "ok" : "failed", note, timings: done(t, t0), receipt, ingest, entered });
+
+    if (action.kind === "done") {
+      state.running = false;
+      push();
+      return;
+    }
+    await sleep(220);
+  }
+
+  state.running = false;
+  push();
+}
+
+// ── server response handling ───────────────────────────────────────────────
+
+async function handleResponse(
+  res: ServerResponse,
+  step: number,
+  t: StageTimings,
+  t0: number,
+  receipt: PrivacyReceipt,
+): Promise<{ stop: boolean; action: AgentAction | null; thought: string; route: StepLog["route"] }> {
+  switch (res.type) {
+    case "action":
+      return { stop: false, action: res.action, thought: res.thought, route: "server" };
+
+    case "plan":
+      // A short plan is executed one step at a time; the page is re-read between
+      // each, so a stale step can never be blindly applied.
+      return { stop: false, action: res.steps[0] ?? null, thought: res.thought, route: "server" };
+
+    case "data":
+      state.answer = res.answer;
+      state.running = false;
+      log({ step, route: "server", result: "ok", note: res.answer, timings: done(t, t0), receipt });
+      push();
+      return { stop: true, action: null, thought: "", route: "server" };
+
+    case "ask_user":
+      state.awaitingConfirm = { action: { kind: "wait" }, why: res.question };
+      log({ step, route: "ask_user", result: "pending", note: res.question, timings: done(t, t0), receipt });
+      push();
+      return { stop: !(await waitForConfirm()), action: null, thought: "", route: "ask_user" };
+
+    case "need_image":
+      // The next payload carries one masked frame. Nothing is re-sent: the
+      // client re-perceives, re-redacts and re-verifies from scratch.
+      needImage = true;
+      log({ step, route: "server", result: "ok", note: `server requested pixels — ${res.reason}`, timings: done(t, t0), receipt });
+      return { stop: false, action: null, thought: "", route: "server" };
+
+    case "error":
+      log({ step, route: "server", result: "failed", note: res.message, timings: done(t, t0), receipt });
+      state.error = res.message;
+      state.running = false;
+      push();
+      return { stop: true, action: null, thought: "", route: "server" };
+  }
+}
+
+// ── helpers ────────────────────────────────────────────────────────────────
+
+async function perceive(mode: Mode): Promise<RawScreenGraph | null> {
+  if (tabId == null) return null;
+  try {
+    const r = (await chrome.tabs.sendMessage(tabId, { kind: "perceive", mode })) as ContentResponse;
+    return r.ok && "graph" in r ? r.graph : null;
+  } catch {
+    // The content script may not be injected yet on a pre-existing tab.
+    try {
+      await chrome.scripting.executeScript({ target: { tabId }, files: ["content.js"] });
+      const r = (await chrome.tabs.sendMessage(tabId, { kind: "perceive", mode })) as ContentResponse;
+      return r.ok && "graph" in r ? r.graph : null;
+    } catch {
+      return null;
+    }
+  }
+}
+
+function waitForConfirm(): Promise<boolean> {
+  return new Promise((resolve) => {
+    confirmResolver = resolve;
+  });
+}
+
+function log(entry: StepLog): void {
+  state.steps.push(entry);
+  push();
+}
+
+function fail(message: string): void {
+  state.error = message;
+  state.running = false;
+  push();
+}
+
+function push(): void {
+  chrome.runtime.sendMessage({ kind: "state", state }).catch(() => {});
+}
+
+function done(t: StageTimings, t0: number): StageTimings {
+  t.total = round(performance.now() - t0);
+  return { ...t };
+}
+
+/**
+ * A cheap description of "what the page looks like right now". Values are
+ * included by presence only — the fingerprint stays in the service worker, but
+ * there is no reason to build a structure holding plaintext we do not need.
+ */
+function fingerprintOf(g: RawScreenGraph): string {
+  const parts = g.elements.map((e) => `${e.id}:${e.role}:${e.name}:${e.value ? 1 : 0}:${e.visible ? 1 : 0}`);
+  return fnv1a(`${g.url}|${g.viewport.scrollY}|${g.focus ?? ""}|${parts.join("|")}`);
+}
+
+const round = (n: number) => Math.round(n * 100) / 100;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

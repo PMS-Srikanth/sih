@@ -1,0 +1,193 @@
+# Cordon
+
+**SIH26171 — On-device Visual Perception for Light-weight Browser Agents**
+
+A browser extension where perception and privacy enforcement run on the user's device.
+The server reasons about the page without ever receiving a pixel, a password, or a name.
+
+> Phase 1 — the complete agent loop with no ML models in it yet. DOM + accessibility-tree
+> perception, calibrated PII detection, tight redaction, the verification gate, local-first
+> routing, grounded execution. The vision channel lands in phase 2.
+> See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
+
+## Run it
+
+```bash
+npm install
+npm run build          # → dist/
+npm run server         # → http://127.0.0.1:8787/agent
+npm run demo           # → http://127.0.0.1:8788/
+```
+
+Load the extension:
+
+- **Chrome** — `chrome://extensions` → Developer mode → *Load unpacked* → select `dist/`
+- **Firefox** — `npm run build -- --firefox`, then `about:debugging` → *This Firefox* →
+  *Load Temporary Add-on* → select `dist/manifest.json`
+
+Then open <http://127.0.0.1:8788/application.html>, click the Cordon icon, and try:
+
+| Task | What it demonstrates |
+|---|---|
+| `Click "Save draft"` | **Local route.** Resolved on device — 0 network calls, no redaction work |
+| `What sensitive data is on this page?` | **Server route** returning *data* rather than an action |
+| `Fill this application from my profile` | Full loop — detect, redact, verify, transmit, resolve, ground, execute |
+| `Submit application` | **Human confirmation** before an irreversible action |
+
+The page is overlaid with the ScreenGraph as it is perceived, and with solid blocks
+over everything the privacy engine redacted. The side panel shows per-step timings and
+the privacy receipt.
+
+---
+
+## Prove the engine without a browser
+
+```bash
+npm run eval
+```
+
+Runs the detectors, fusion, redaction and the verifier over a fixture that mirrors the
+demo page — with deliberate **hard negatives** (order numbers, tracking IDs, a
+Verhoeff-invalid Aadhaar, a Luhn-invalid card) that must *not* be redacted, because the
+evaluation grades precision as heavily as recall.
+
+Current result on the fixture:
+
+```
+precision 1.000   recall 1.000   F1 1.000
+detect 8.79 ms · redact 1.66 ms · verify 2.24 ms   for 21 elements
+verdict: PASS — cleared for transmission
+```
+
+Sample of what actually crosses the wire:
+
+```
+el_2   Email address    → EMAIL_1
+el_4   Password         → sensitive: true   (value removed, no handle)
+el_7   Aadhaar number   → AADHAAR_1
+
+prose → "Questions? Write to EMAIL_2 or call PHONE_2."
+```
+
+That last line is the point: the eleven characters of the email are replaced at their
+exact offsets — not the sentence, not the paragraph, not the element.
+
+---
+
+## Your data stays on your device
+
+Open **My data** in the side panel and fill in your name, email, mobile, Aadhaar and so on.
+It is stored in extension-local storage, which the page cannot read, and it is **never put
+into a payload**.
+
+When the agent meets a blank form, the client classifies each empty field and tells the
+server only what *type* it can supply:
+
+```json
+{ "id": "el_101", "role": "textbox", "name": "Full name", "wants": "PERSON_1" }
+```
+
+The server does the genuinely hard part — deciding which slot belongs in which field, across
+multi-page forms and conditional sections — and replies `fill el_101 with PERSON_1`. The
+client resolves `PERSON_1` from local storage at the last moment. The name never leaves.
+
+This works on **any** site, not just the demo pages: the content script runs on all URLs, so
+a Google Form or a real job application is filled the same way. Anything the extension
+detects as PII on the page is still detected and redacted before transmission.
+
+`allowedSinks` still applies. In the harness a blank form yields:
+
+```
+el_101  Full name       wants: PERSON_1
+el_102  Email address   wants: EMAIL_1
+el_105  Comments        wants: —        ← a big free-text box is never a PII sink
+profile values in the payload: NONE
+```
+
+> **Honest limitation.** Extension-local storage is isolated from web pages but is not
+> encrypted at rest. A passphrase-derived key is the right next step; today the guarantee is
+> "the page and the network cannot see it", not "an attacker with your disk cannot".
+
+## How it maps to the evaluation
+
+| # | Metric | Weight | Where |
+|---|---|---|---|
+| 1 | Accuracy of visual context | 25% | `perception/dom-graph.ts` — ScreenGraph, occlusion-aware. Vision channel: phase 2 |
+| 2 | PII recall **and** precision | 20% | `privacy/detectors/*`, `privacy/fusion.ts` — noisy-OR, two thresholds, context tie-break |
+| 3 | Precision of redaction | 20% | `privacy/redactor.ts` — span-offset substitution; `content/overlay.ts` — `Range.getClientRects` |
+| 4 | Client resource utilization | 20% | `agent/router.ts` — local-first; element caps; no model load on the local path |
+| 5 | End-to-end latency | 15% | Most steps never reach the network. Per-stage timings in the side panel |
+
+---
+
+## Layout
+
+```
+extension/
+  manifest.chrome.json · manifest.firefox.json
+  src/
+    perception/dom-graph.ts     DOM + AX tree → ScreenGraph, occlusion, grouping, signatures
+    privacy/
+      checksums.ts              Verhoeff · Luhn · PAN · IFSC · entropy
+      patterns.ts               pattern rules, checksum-gated
+      detectors/dom.ts          type=password, autocomplete tokens, label keywords, allowed sinks
+      detectors/regex.ts        patterns over values AND prose
+      fusion.ts                 noisy-OR, τ_high/τ_low, context tie-break
+      vault.ts                  typed stable handles; service-worker memory only
+      redactor.ts               drop · substitute · mask → SanitizedContext
+      verifier.ts               V1–V6, independent of the redactor, has a veto
+    agent/
+      router.ts                 local-first: is the server needed at all?
+      policy.ts                 handle resolution, allowed sinks, irreversible-action gate
+    content/
+      index.ts                  message handling in the page's isolated world
+      executor.ts               grounding + native-setter execution + post-condition
+      overlay.ts                the visual proof
+    background/
+      index.ts                  orchestrator — the only process holding real values
+      transport.ts              the only place that performs a network request
+    sidepanel/                  task UI, step log, privacy receipt, timings
+server/index.mjs                rule-based planner; swap plan() for the VLM in phase 4
+demo-pages/                     application.html · login.html
+eval/smoke.ts                   headless P/R + latency
+docs/                           ARCHITECTURE.md · DIAGRAMS.md · Cordon_SIH26171.pptx
+```
+
+---
+
+## The privacy boundary, precisely
+
+Sensitive content has three fates. Only the sanitized artefact is ever transmitted.
+
+| Fate | Applies to | Server receives | Reversible |
+|---|---|---|---|
+| **Removed** | password, OTP, API key | `"sensitive": true` | Nothing to reverse — no value entered the payload |
+| **Replaced** | email, name, phone, card, Aadhaar, PAN | `EMAIL_1` | No — the map exists only in the client vault |
+| **Painted over** | face, ID card *(phase 2)* | black pixels | No — composited into the bitmap, not overlaid |
+
+The server legitimately learns **that** a password field exists, **that** an email exists and
+which fields share it, and **where** a masked region sits — never the values. That is
+unidentifiability, which is the word the problem statement uses, not invisibility.
+
+---
+
+## Phase 1 status
+
+- [x] ScreenGraph from DOM + accessibility tree, with occlusion detection
+- [x] DOM-rule and pattern detectors, checksum-gated
+- [x] Calibrated fusion — noisy-OR, two thresholds, context tie-break
+- [x] Typed stable handles + in-memory vault
+- [x] Span-offset redaction
+- [x] Verifier V1, V2, V4, V5 + V6 escalation *(V3 needs the image channel)*
+- [x] Local profile store + side-panel editor; blank-form filling via `wants` handles
+- [x] Local-first router, with offscreen/occluded distinction
+- [x] Loop termination — repeat guard, no-progress fingerprint, server `done`
+- [x] Allowed-sink enforcement + irreversible-action confirmation
+- [x] Grounding via stability signatures; native-setter execution
+- [x] Rule-based server speaking the redaction schema, with an output guard
+- [x] Side panel: step log, per-stage timings, privacy receipt
+- [x] Headless P/R harness
+- [ ] **Phase 2** — screenshot capture, coverage map, ONNX Runtime Web, face/ID detector,
+      canvas bbox masking, verifier V3

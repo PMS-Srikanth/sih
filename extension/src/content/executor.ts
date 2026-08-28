@@ -1,0 +1,209 @@
+/**
+ * E3 grounding and E4 execution, in the page's isolated world.
+ *
+ * Grounding is the check most browser agents skip: an element id resolved three
+ * hundred milliseconds ago may now point at something else entirely. We re-derive
+ * the stability signature and refuse to act on a mismatch.
+ */
+import type { AgentAction, RawElement } from "@/shared/types";
+import { signature } from "@/perception/dom-graph";
+
+export interface ExecOutcome {
+  ok: boolean;
+  note?: string;
+  postSig?: string;
+  /**
+   * Post-condition for a fill: the field was read back and compared with what
+   * we intended to type. Only the VERDICT travels — never the value, and never
+   * the value's content in any form. A length is reported so a truncating
+   * field (maxlength) is distinguishable from an ignored one.
+   */
+  ingest?: {
+    verified: boolean;
+    expectedLen: number;
+    actualLen: number;
+    reason: string;
+  };
+}
+
+/** Element ids are only meaningful against the graph that produced them. */
+let registry = new Map<string, Element>();
+let registryMeta = new Map<string, RawElement>();
+
+export function registerGraph(elements: RawElement[], nodes: Map<string, Element>): void {
+  registry = nodes;
+  registryMeta = new Map(elements.map((e) => [e.id, e]));
+}
+
+export function lookup(id: string): Element | undefined {
+  return registry.get(id);
+}
+
+export async function execute(action: AgentAction, resolved?: string, expectSig?: string): Promise<ExecOutcome> {
+  if (action.kind === "wait") {
+    await sleep(Number(action.value) || 400);
+    return { ok: true, note: "waited" };
+  }
+
+  if (action.kind === "scroll") {
+    const by = Number(action.value) || 600;
+    window.scrollBy({ top: by, behavior: "instant" as ScrollBehavior });
+    await sleep(120);
+    return { ok: true, note: `scrolled ${by}px` };
+  }
+
+  if (action.kind === "navigate") {
+    if (!action.value) return { ok: false, note: "no URL" };
+    location.href = action.value;
+    return { ok: true, note: "navigating" };
+  }
+
+  if (action.kind === "done" || action.kind === "extract") {
+    return { ok: true, note: action.kind };
+  }
+
+  const id = action.target;
+  if (!id) return { ok: false, note: "action has no target" };
+
+  const el = registry.get(id);
+  const meta = registryMeta.get(id);
+  if (!el || !meta) return { ok: false, note: `${id} is not in the current graph` };
+  if (!el.isConnected) return { ok: false, note: `${id} has been removed from the document` };
+
+  // ── E3 · grounding ───────────────────────────────────────────────────────
+  const r = el.getBoundingClientRect();
+  const nowSig = signature({
+    role: meta.role,
+    name: meta.name,
+    tag: meta.tag,
+    bbox: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
+  });
+  const want = expectSig ?? meta.sig;
+  if (want && nowSig !== want) {
+    return { ok: false, note: "grounding failed — the page changed, re-perceiving instead of clicking", postSig: nowSig };
+  }
+
+  // ── E4 · execute ─────────────────────────────────────────────────────────
+  switch (action.kind) {
+    case "click": {
+      (el as HTMLElement).scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
+      await sleep(40);
+      (el as HTMLElement).focus?.();
+      (el as HTMLElement).click();
+      await sleep(160);
+      return { ok: true, note: `clicked ${meta.name || id}`, postSig: nowSig };
+    }
+
+    case "fill": {
+      if (resolved == null) return { ok: false, note: "fill without a resolved value" };
+      const ok = setFieldValue(el, resolved);
+      if (!ok) return { ok: false, note: "element is not a fillable field" };
+
+      // Let any framework re-render settle before believing what we read.
+      await sleep(90);
+      const ingest = checkIngestion(el, resolved);
+
+      return {
+        ok: ingest.verified,
+        note: ingest.verified
+          ? `filled ${meta.name || id} — value verified in the field`
+          : `fill did not stick in ${meta.name || id}: ${ingest.reason}`,
+        postSig: nowSig,
+        ingest,
+      };
+    }
+
+    case "select": {
+      if (resolved == null) return { ok: false, note: "select without a value" };
+      const sel = el as HTMLSelectElement;
+      if (sel.tagName !== "SELECT") return { ok: false, note: "target is not a <select>" };
+      const opt = Array.from(sel.options).find(
+        (o) => o.value === resolved || o.text.trim().toLowerCase() === resolved.trim().toLowerCase(),
+      );
+      if (!opt) return { ok: false, note: `no option matching "${resolved}"` };
+      sel.value = opt.value;
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+      return { ok: true, note: `selected ${opt.text}`, postSig: nowSig };
+    }
+
+    default:
+      return { ok: false, note: `unsupported action ${action.kind}` };
+  }
+}
+
+/**
+ * Did the value actually land, and is it the value we meant?
+ *
+ * Typing into a field is not the same as the field holding the value: React can
+ * revert it, a controlled component can reformat it, `maxlength` can truncate
+ * it, and an input mask can rewrite it entirely. An agent that assumes success
+ * fills half a form wrongly and submits it.
+ *
+ * The comparison happens here, in the page's isolated world, and only the
+ * verdict leaves. The value itself is never put into a message or a log.
+ */
+function checkIngestion(el: Element, expected: string): NonNullable<ExecOutcome["ingest"]> {
+  return compareIngestion(readFieldValue(el), expected);
+}
+
+/** Pure, so the failure modes can be tested without a browser. */
+export function compareIngestion(actual: string, expected: string): NonNullable<ExecOutcome["ingest"]> {
+  const base = { expectedLen: expected.length, actualLen: actual.length };
+
+  if (actual === expected) {
+    return { ...base, verified: true, reason: "exact match" };
+  }
+  if (actual.length === 0) {
+    return { ...base, verified: false, reason: "field is still empty — the framework reverted it" };
+  }
+  // Masked and formatted inputs legitimately differ: "9876543210" may become
+  // "98765 43210". Compare on alphanumerics before calling it a failure.
+  const strip = (s: string) => s.replace(/[^a-z0-9]/gi, "").toLowerCase();
+  if (strip(actual) === strip(expected)) {
+    return { ...base, verified: true, reason: "match after formatting" };
+  }
+  if (expected.startsWith(actual) && actual.length > 0) {
+    return { ...base, verified: false, reason: `truncated to ${actual.length} of ${expected.length} chars` };
+  }
+  return { ...base, verified: false, reason: "field holds something different" };
+}
+
+function readFieldValue(el: Element): string {
+  const tag = el.tagName.toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") {
+    return (el as HTMLInputElement).value ?? "";
+  }
+  if ((el as HTMLElement).isContentEditable) return (el as HTMLElement).textContent ?? "";
+  return "";
+}
+
+/**
+ * React and other frameworks track the value through a property descriptor, so a
+ * plain `el.value = x` is silently reverted on the next render. Going through the
+ * native setter and then dispatching input+change is what actually sticks.
+ */
+function setFieldValue(el: Element, value: string): boolean {
+  const tag = el.tagName.toLowerCase();
+
+  if (tag === "input" || tag === "textarea") {
+    const proto = tag === "input" ? HTMLInputElement.prototype : HTMLTextAreaElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+    (el as HTMLElement).focus();
+    if (setter) setter.call(el, value);
+    else (el as HTMLInputElement).value = value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    return true;
+  }
+
+  if ((el as HTMLElement).isContentEditable) {
+    (el as HTMLElement).focus();
+    (el as HTMLElement).textContent = value;
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+    return true;
+  }
+
+  return false;
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

@@ -1,0 +1,19 @@
+# Cordon — Python dependencies
+#
+# Cordon itself is a TypeScript/Node project; the runtime dependencies for the
+# extension and the server live in package.json (`npm install`).
+#
+# Python is used only for the presentation toolchain:
+#   python -m pip install -r requirements.txt
+#   python docs/build_deck.py        → docs/Cordon_SIH26171.pptx
+#
+# Tested on Python 3.11.9.
+
+python-pptx==1.0.2
+
+# Pulled in by python-pptx; pinned so a fresh machine reproduces the deck byte-
+# for-byte rather than picking up a newer transitive release.
+lxml==6.1.2
+pillow==12.2.0
+XlsxWriter==3.2.9
+typing_extensions==4.15.0

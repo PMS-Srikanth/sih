@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Northwind Careers — Application</title>
+<style>
+  :root { --bg:#f6f7f8; --card:#fff; --line:#dfe4e6; --ink:#171e21; --ink2:#5a686c; --acc:#0b6e77; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 "Segoe UI",system-ui,sans-serif; }
+  header { background:var(--ink); color:#fff; padding:18px 32px; display:flex; align-items:center; gap:14px; }
+  header h1 { font-size:16px; margin:0; font-weight:600; }
+  .wrap { max-width:860px; margin:28px auto 80px; padding:0 20px; display:flex; flex-direction:column; gap:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:22px 26px; }
+  h2 { font-size:15px; margin:0 0 4px; }
+  .muted { color:var(--ink2); font-size:13px; margin:0 0 18px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px 18px; }
+  .full { grid-column:1/-1; }
+  label { display:block; font-size:12px; font-weight:600; color:var(--ink2); margin-bottom:5px; }
+  input, textarea, select { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:7px;
+    font:inherit; background:#fff; color:var(--ink); }
+  input:focus, textarea:focus, select:focus { outline:2px solid var(--acc); outline-offset:1px; border-color:transparent; }
+  textarea { resize:vertical; min-height:96px; }
+  .row { display:flex; gap:10px; align-items:center; }
+  button { padding:10px 18px; border-radius:7px; border:1px solid var(--line); background:#fff;
+    font:inherit; font-weight:600; cursor:pointer; }
+  button.primary { background:var(--acc); border-color:var(--acc); color:#fff; }
+  .idcard { display:flex; gap:16px; align-items:center; padding:14px; border:1px dashed var(--line);
+    border-radius:9px; background:#fafbfb; }
+  .idcard img { border-radius:6px; }
+  .kv { font-size:13px; }
+  .kv b { color:var(--ink2); font-weight:600; display:inline-block; min-width:96px; }
+  footer { color:var(--ink2); font-size:12px; text-align:center; padding:0 20px 40px; }
+  .pick { color:var(--acc); text-decoration:underline; cursor:pointer; font-style:normal; font-weight:600; }
+  #idPhoto { object-fit:cover; }
+</style>
+</head>
+<body>
+
+<header>
+  <strong>NORTHWIND</strong>
+  <h1>Careers — Senior Frontend Engineer</h1>
+</header>
+
+<div class="wrap">
+
+  <!-- Plain prose PII: no form field, so only the pattern detector finds it. -->
+  <div class="card">
+    <h2>Before you apply</h2>
+    <p class="muted">
+      Questions about this role? Write to our recruiter Priya Raghavan at priya.raghavan@northwind-careers.com
+      or call 9845017632 between 10:00 and 18:00 IST.
+      Your reference number for this posting is 4471902238 — quote it in any email.
+      Order number 1234567890 relates to your earlier purchase and is not needed here.
+    </p>
+  </div>
+
+  <form class="card">
+    <h2>Personal details</h2>
+    <p class="muted">All fields are required unless marked optional.</p>
+    <div class="grid">
+      <div>
+        <label for="fullname">Full name</label>
+        <input id="fullname" name="fullname" autocomplete="name" value="Srikar Gautam" />
+      </div>
+      <div>
+        <label for="email">Email address</label>
+        <input id="email" name="email" type="email" autocomplete="email" value="srikar.gautam@gmail.com" />
+      </div>
+      <div>
+        <label for="phone">Mobile number</label>
+        <input id="phone" name="phone" type="tel" autocomplete="tel" value="9876543210" />
+      </div>
+      <div>
+        <label for="dob">Date of birth</label>
+        <input id="dob" name="dob" autocomplete="bday" value="14/03/2003" />
+      </div>
+      <div class="full">
+        <label for="address">Street address</label>
+        <input id="address" name="address" autocomplete="street-address" value="42 Banjara Hills, Hyderabad 500034" />
+      </div>
+      <div>
+        <label for="pan">PAN</label>
+        <input id="pan" name="pan" value="ABCPG1234K" />
+      </div>
+      <div>
+        <label for="aadhaar">Aadhaar number</label>
+        <input id="aadhaar" name="aadhaar" value="2234 5678 9018" />
+      </div>
+    </div>
+  </form>
+
+  <form class="card">
+    <h2>Account</h2>
+    <p class="muted">Create a password so you can return to a draft application.</p>
+    <div class="grid">
+      <div>
+        <label for="pw">Password</label>
+        <input id="pw" name="pw" type="password" autocomplete="new-password" value="Hunter2!SuperSecret" />
+      </div>
+      <div>
+        <label for="otp">Verification code</label>
+        <input id="otp" name="otp" autocomplete="one-time-code" value="482913" />
+      </div>
+    </div>
+  </form>
+
+  <form class="card">
+    <h2>Experience</h2>
+    <p class="muted">Tell us about your most relevant role.</p>
+    <div class="grid">
+      <div>
+        <label for="years">Years of experience</label>
+        <select id="years" name="years">
+          <option>0–1</option><option selected>2–4</option><option>5–8</option><option>9+</option>
+        </select>
+      </div>
+      <div>
+        <label for="notice">Notice period</label>
+        <select id="notice" name="notice">
+          <option selected>Immediate</option><option>30 days</option><option>60 days</option>
+        </select>
+      </div>
+      <div class="full">
+        <label for="summary">Summary of experience</label>
+        <textarea id="summary" name="summary" placeholder="What have you built?"></textarea>
+      </div>
+      <div class="full">
+        <label for="portfolio">Portfolio URL (optional)</label>
+        <input id="portfolio" name="portfolio" placeholder="https://" />
+      </div>
+    </div>
+  </form>
+
+  <!-- The DOM only knows "there is an image". Vision is the only channel that
+       can tell this contains a face and an identity document. Phase 2. -->
+  <div class="card">
+    <h2>Identity verification</h2>
+    <p class="muted">
+      We have received the document below.
+      <label for="photoPick" class="pick">Replace it with a real photo</label>
+      to see the on-device model find a face in pixels the DOM cannot read.
+    </p>
+    <input type="file" id="photoPick" accept="image/*" hidden />
+    <div class="idcard">
+      <img id="idPhoto" alt="Uploaded identity document" width="150" height="96"
+           src="data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='150' height='96'%3E%3Crect width='150' height='96' rx='6' fill='%23dfe7ea'/%3E%3Ccircle cx='34' cy='40' r='17' fill='%23a8b8bd'/%3E%3Cpath d='M14 82c0-13 9-21 20-21s20 8 20 21z' fill='%23a8b8bd'/%3E%3Crect x='66' y='24' width='68' height='7' rx='3' fill='%23b9c6ca'/%3E%3Crect x='66' y='40' width='54' height='7' rx='3' fill='%23b9c6ca'/%3E%3Crect x='66' y='56' width='62' height='7' rx='3' fill='%23b9c6ca'/%3E%3C/svg%3E" />
+      <div>
+        <p class="kv"><b>Document</b> Aadhaar card</p>
+        <p class="kv"><b>Status</b> Verified</p>
+        <p class="kv"><b>Uploaded</b> 12/08/2026</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Submit</h2>
+    <p class="muted">Review everything above. You cannot edit after submitting.</p>
+    <div class="row">
+      <button type="button" id="save">Save draft</button>
+      <button type="button" class="primary" id="submit">Submit application</button>
+    </div>
+  </div>
+
+</div>
+
+<footer>Northwind is a fictional company. This page exists to exercise the Cordon privacy engine.</footer>
+
+<div id="toast" role="status" aria-live="polite"></div>
+<style>
+  #toast { position:fixed; left:50%; bottom:28px; transform:translate(-50%,14px); opacity:0;
+    background:#171e21; color:#fff; padding:11px 20px; border-radius:8px; font-weight:600;
+    font-size:14px; pointer-events:none; transition:opacity .18s, transform .18s; z-index:99; }
+  #toast.on { opacity:1; transform:translate(-50%,0); }
+</style>
+<script>
+  // Deliberately not alert(): a modal dialog blocks the page thread, which would
+  // both hide the agent's overlay and add the human's reaction time to every
+  // latency measurement.
+  const toast = document.getElementById("toast");
+  let timer;
+  function say(msg) {
+    toast.textContent = msg;
+    toast.classList.add("on");
+    clearTimeout(timer);
+    timer = setTimeout(() => toast.classList.remove("on"), 2200);
+  }
+  // The photo never leaves this page — it is read locally into an object URL.
+  // Cordon then has to find the face in the pixels: the DOM only says <img>.
+  const pick = document.getElementById("photoPick");
+  const idPhoto = document.getElementById("idPhoto");
+  pick.addEventListener("change", () => {
+    const f = pick.files && pick.files[0];
+    if (!f) return;
+    idPhoto.src = URL.createObjectURL(f);
+    idPhoto.width = 150;
+    idPhoto.height = 150;
+    say("Photo loaded. Run Cordon to see it detected and masked.");
+  });
+
+  document.getElementById("save").addEventListener("click", () => say("Draft saved."));
+  document.getElementById("submit").addEventListener("click", () => say("Application submitted."));
+</script>
+</body>
+</html>

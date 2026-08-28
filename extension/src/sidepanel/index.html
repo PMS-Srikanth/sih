@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cordon</title>
+    <link rel="stylesheet" href="sidepanel.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="mark"></span>
+        <div>
+          <h1>Cordon</h1>
+          <p class="sub">On-device perception · local redaction</p>
+        </div>
+        <span class="build" id="build"></span>
+      </div>
+    </header>
+
+    <section class="compose">
+      <label class="lbl" for="task">Task</label>
+      <textarea id="task" rows="2" placeholder="e.g. Click &quot;Sign in&quot;"></textarea>
+
+      <div class="row">
+        <div class="modes" id="modes" role="group" aria-label="Latency mode">
+          <button data-mode="fast" type="button">Fast</button>
+          <button data-mode="balanced" class="on" type="button">Balanced</button>
+          <button data-mode="thorough" type="button">Thorough</button>
+        </div>
+        <button id="run" class="primary" type="button">Run</button>
+      </div>
+      <p class="hint" id="modeHint">Balanced — DOM graph, calibrated PII detection, vision on unexplained regions.</p>
+    </section>
+
+    <section id="confirm" class="confirm" hidden>
+      <p class="ctitle">Confirmation needed</p>
+      <p class="cwhy" id="confirmWhy"></p>
+      <div class="row">
+        <button id="approve" class="primary" type="button">Approve</button>
+        <button id="decline" type="button">Decline</button>
+      </div>
+    </section>
+
+    <section id="banner" class="banner" hidden></section>
+
+    <details class="profile" id="profileBox">
+      <summary>
+        <span class="lbl">My data</span>
+        <span class="vstate" id="vstate"></span>
+      </summary>
+
+      <!-- First run — choose a passphrase -->
+      <div class="vpane" id="paneSetup" hidden>
+        <p class="pnote">
+          Your details are encrypted on this device with <b>AES-256-GCM</b>, under a key
+          derived from a passphrase only you know. Choose one to begin.
+        </p>
+        <div class="vform">
+          <div class="pfield wide">
+            <label for="pp1">Passphrase</label>
+            <input id="pp1" type="password" autocomplete="new-password" placeholder="at least 8 characters" />
+            <div class="meter" id="meter"><i></i><span id="meterLabel"></span></div>
+          </div>
+          <div class="pfield wide">
+            <label for="pp2">Confirm passphrase</label>
+            <input id="pp2" type="password" autocomplete="new-password" placeholder="type it again" />
+          </div>
+        </div>
+        <p class="warn">There is no recovery. If you forget it, the data is gone.</p>
+        <div class="row">
+          <button id="doSetup" class="primary" type="button">Create vault</button>
+          <span class="verr" id="setupErr"></span>
+        </div>
+      </div>
+
+      <!-- Returning — unlock -->
+      <div class="vpane" id="paneLock" hidden>
+        <p class="pnote">
+          Locked. The ciphertext is on this device; nothing can read it until you unlock.
+          The key is discarded when Chrome closes.
+        </p>
+        <div class="vform">
+          <div class="pfield wide">
+            <label for="ppUnlock">Passphrase</label>
+            <input id="ppUnlock" type="password" autocomplete="current-password" />
+          </div>
+        </div>
+        <div class="row">
+          <button id="doUnlock" class="primary" type="button">Unlock</button>
+          <button id="doDestroy" class="danger" type="button">Forget vault</button>
+          <span class="verr" id="unlockErr"></span>
+        </div>
+      </div>
+
+      <!-- Unlocked — edit -->
+      <div class="vpane" id="paneOpen" hidden>
+        <p class="pnote">
+          Encrypted on this device. Values are never transmitted — the server receives a
+          handle like <code>EMAIL_1</code> and tells the extension which field it belongs in.
+        </p>
+        <div class="pfields" id="pfields"></div>
+        <div class="row">
+          <button id="psave" class="primary" type="button">Save</button>
+          <button id="doLock" type="button">Lock</button>
+          <span class="psaved" id="psaved"></span>
+        </div>
+      </div>
+    </details>
+
+    <section class="stats">
+      <div class="stat"><span class="k" id="sSteps">0</span><span class="v">steps</span></div>
+      <div class="stat"><span class="k" id="sLocal">0</span><span class="v">on device</span></div>
+      <div class="stat"><span class="k" id="sNet">0</span><span class="v">network calls</span></div>
+      <div class="stat"><span class="k" id="sBytes">0</span><span class="v">bytes sent</span></div>
+    </section>
+
+    <details class="entered" id="enteredBox" hidden>
+      <summary>
+        <span class="lbl">What the agent entered</span>
+        <span class="ecount" id="ecount"></span>
+      </summary>
+      <p class="pnote">
+        Your own data, on your own machine. Values stay hidden until you reveal them,
+        and none of this is ever part of what goes to the server.
+      </p>
+      <div class="erows" id="erows"></div>
+    </details>
+
+    <section class="log" id="log"></section>
+
+    <footer>
+      <label class="lbl" for="server">Server</label>
+      <input id="server" type="text" spellcheck="false" />
+    </footer>
+
+    <script type="module" src="sidepanel.js"></script>
+  </body>
+</html>

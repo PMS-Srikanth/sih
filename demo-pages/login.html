@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Northwind — Sign in</title>
+<style>
+  :root { --bg:#f6f7f8; --line:#dfe4e6; --ink:#171e21; --ink2:#5a686c; --acc:#0b6e77; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 "Segoe UI",system-ui,sans-serif;
+    display:grid; place-items:center; min-height:100vh; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:30px 32px;
+    width:380px; display:flex; flex-direction:column; gap:14px; }
+  h1 { font-size:19px; margin:0; }
+  p.muted { color:var(--ink2); font-size:13px; margin:0; }
+  label { display:block; font-size:12px; font-weight:600; color:var(--ink2); margin-bottom:5px; }
+  input { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:7px; font:inherit; }
+  input:focus { outline:2px solid var(--acc); outline-offset:1px; border-color:transparent; }
+  button { padding:10px 16px; border-radius:7px; border:1px solid var(--acc); background:var(--acc);
+    color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  .alt { background:#fff; color:var(--ink); border-color:var(--line); }
+  .links { display:flex; justify-content:space-between; font-size:13px; }
+  a { color:var(--acc); }
+</style>
+</head>
+<body>
+  <form class="card">
+    <h1>Sign in to Northwind</h1>
+    <p class="muted">Support: help@northwind-careers.com · 1800 200 4400</p>
+
+    <div>
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="email" value="srikar.gautam@gmail.com" />
+    </div>
+    <div>
+      <label for="password">Password</label>
+      <input id="password" type="password" autocomplete="current-password" value="Hunter2!SuperSecret" />
+    </div>
+
+    <button type="button" id="signin">Sign in</button>
+    <button type="button" class="alt" id="sso">Sign in with SSO</button>
+
+    <div class="links">
+      <a href="#">Forgot password?</a>
+      <a href="#">Create an account</a>
+    </div>
+  </form>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+  <style>
+    #toast { position:fixed; left:50%; bottom:28px; transform:translate(-50%,14px); opacity:0;
+      background:#171e21; color:#fff; padding:11px 20px; border-radius:8px; font-weight:600;
+      font-size:14px; pointer-events:none; transition:opacity .18s, transform .18s; }
+    #toast.on { opacity:1; transform:translate(-50%,0); }
+  </style>
+  <script>
+    // Not alert(): a modal blocks the page thread, hiding the agent overlay and
+    // adding human reaction time to the latency numbers.
+    const toast = document.getElementById("toast");
+    let timer;
+    function say(msg) {
+      toast.textContent = msg;
+      toast.classList.add("on");
+      clearTimeout(timer);
+      timer = setTimeout(() => toast.classList.remove("on"), 2200);
+    }
+    document.getElementById("signin").addEventListener("click", () => say("Signed in."));
+    document.getElementById("sso").addEventListener("click", () => say("Signed in with SSO."));
+  </script>
+</body>
+</html>
