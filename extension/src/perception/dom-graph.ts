@@ -60,6 +60,8 @@ export function buildScreenGraph(): PerceiveResult {
     if (textCount >= MAX_TEXT) break;
     if (seen.has(el)) continue;
     if (!hasOwnText(el)) continue;
+    // Conditionally add non-interactive text nodes ONLY if they might contain PII
+    if (!/\d{4,}|@/i.test(ownText(el))) continue;
     if (push(el, true)) textCount++;
   }
 

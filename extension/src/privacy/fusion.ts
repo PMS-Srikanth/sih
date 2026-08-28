@@ -59,11 +59,10 @@ export function fuse({ elements, detections, taskTargets }: FusionInput): Findin
   for (const [, ds] of groups) {
     const first = ds[0];
     const el = byId.get(first.elementId);
-    if (!el) continue;
 
     // Visual classes are whole-element regions; the text tie-break features
     // (label proximity, checksums, repetition) do not apply to pixels.
-    if (first.cls === "face" || first.cls === "id_document") {
+    if (["face", "id_document", "document", "signature", "screenshot", "chart", "icon"].includes(first.cls)) {
       const pv = 1 - ds.reduce((q, d) => q * (1 - clamp(d.p)), 1);
       if (pv < TAU_LOW) continue;
       findings.push({
@@ -74,6 +73,26 @@ export function fuse({ elements, detections, taskTargets }: FusionInput): Findin
         sources: Array.from(new Set(ds.map((d) => d.source))) as DetectorSource[],
         fate: "mask",
         reason: `visual region, p=${pv.toFixed(2)}`,
+        bbox: first.bbox,
+      });
+      continue;
+    }
+
+    // If there is no DOM element, we cannot run text tie-breaks.
+    if (!el) {
+      let q = 1;
+      for (const d of ds) q *= 1 - clamp(d.p);
+      const p = 1 - q;
+      if (p < TAU_LOW) continue;
+      findings.push({
+        elementId: first.elementId,
+        field: first.field,
+        cls: first.cls,
+        p,
+        sources: Array.from(new Set(ds.map((d) => d.source))) as DetectorSource[],
+        fate: FATE[first.cls] ?? "substitute",
+        reason: `raw spatial Noisy-OR p=${p.toFixed(2)}`,
+        bbox: first.bbox,
       });
       continue;
     }
@@ -105,6 +124,7 @@ export function fuse({ elements, detections, taskTargets }: FusionInput): Findin
       sources,
       fate: FATE[first.cls] ?? "substitute",
       reason,
+      bbox: first.bbox,
     });
   }
 

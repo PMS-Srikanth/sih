@@ -160,7 +160,7 @@ export interface SanitizedContext {
 // ── server protocol ────────────────────────────────────────────────────────
 
 export type ActionKind =
-  | "click" | "fill" | "select" | "scroll" | "navigate" | "wait" | "extract" | "done";
+  | "click" | "fill" | "select" | "scroll" | "navigate" | "wait" | "extract" | "done" | "clear";
 
 export interface AgentAction {
   kind: ActionKind;

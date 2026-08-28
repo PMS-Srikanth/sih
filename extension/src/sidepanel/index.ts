@@ -246,12 +246,38 @@ function render(s: AgentState): void {
   }
 
   const local = s.steps.filter((x) => x.route === "local").length;
-  const net = s.steps.filter((x) => x.receipt).length;
+  const net = s.steps.filter((x) => x.route === "server").length;
   const bytes = s.steps.reduce((n, x) => n + (x.receipt?.payloadBytes ?? 0), 0);
+  
+  let localTime = 0;
+  let netTime = 0;
+  for (const step of s.steps) {
+    const t = step.timings?.total ?? 0;
+    if (step.route === "local") localTime += t;
+    else if (step.route === "server") netTime += t;
+  }
+  const avgLocal = local > 0 ? `${Math.round(localTime / local)}ms` : "—";
+  const avgNet = net > 0 ? `${Math.round(netTime / net)}ms` : "—";
+
   $("sSteps").textContent = String(s.steps.length);
   $("sLocal").textContent = String(local);
   $("sNet").textContent = String(net);
   $("sBytes").textContent = bytes > 9999 ? `${(bytes / 1024).toFixed(1)}k` : String(bytes);
+  
+  // Show vision degraded warning if offscreen is unavailable
+  const visionDegraded = s.steps.some(x => x.receipt?.vision && x.receipt.vision.includes("offscreen unavailable"));
+  let summaryEl = $("sSummary");
+  if (!summaryEl) {
+    summaryEl = document.createElement("div");
+    summaryEl.id = "sSummary";
+    summaryEl.className = "summary-bar";
+    $("log").before(summaryEl);
+  }
+  
+  summaryEl.innerHTML = `${local}/${s.steps.length} steps resolved locally, avg local step ${avgLocal}, avg escalated step ${avgNet}`;
+  if (visionDegraded) {
+    summaryEl.innerHTML += `<div class="warn">⚠️ Vision gracefully degraded (offscreen unavailable)</div>`;
+  }
 
   drawEntered(s.steps);
   drawLog(s.steps);

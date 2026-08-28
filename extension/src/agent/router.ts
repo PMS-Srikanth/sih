@@ -18,6 +18,7 @@ export type RouteDecision =
 const CLICK_VERBS =
   /\b(click|press|tap|hit|choose|select|open|go to|submit|save|sign ?in|log ?in|continue|next|apply|send|search|download|upload|add|edit|create)\b/i;
 const SCROLL_VERBS = /\b(scroll|page down|page up)\b/i;
+const CLEAR_VERBS = /\b(clear|empty|reset)\b/i;
 
 /** A bare control name ("save draft") must match far more tightly than a
  *  verb phrase ("click save draft") before we act without the server. */
@@ -25,11 +26,24 @@ const THRESHOLD_WITH_VERB = 0.6;
 const THRESHOLD_BARE = 0.85;
 
 export function route(graph: RawScreenGraph, task: string, stepsTaken: number): RouteDecision {
+  if (!task.trim()) {
+    return { route: "done", why: "empty task" };
+  }
+
   if (stepsTaken === 0 && SCROLL_VERBS.test(task) && !CLICK_VERBS.test(task)) {
     return {
       route: "local",
       action: { kind: "scroll", value: /up/i.test(task) ? "-600" : "600" },
       why: "task is a bare scroll instruction",
+      confidence: 0.99,
+    };
+  }
+
+  if (stepsTaken === 0 && CLEAR_VERBS.test(task) && !CLICK_VERBS.test(task)) {
+    return {
+      route: "local",
+      action: { kind: "clear" },
+      why: "task is a bare clear instruction",
       confidence: 0.99,
     };
   }
@@ -67,7 +81,7 @@ export function route(graph: RawScreenGraph, task: string, stepsTaken: number): 
 
   // Case 2 — a name match against the visible controls. A click verb lowers the
   // bar; without one, only a near-verbatim control name is enough.
-  const hasVerb = CLICK_VERBS.test(task);
+  const hasVerb = CLICK_VERBS.test(task) || CLEAR_VERBS.test(task);
   const need = hasVerb ? THRESHOLD_WITH_VERB : THRESHOLD_BARE;
 
   const scored = clickable

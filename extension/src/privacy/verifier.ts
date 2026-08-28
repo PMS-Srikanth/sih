@@ -45,7 +45,15 @@ export function verify(context: SanitizedContext, vault: Vault, masks?: MaskAudi
   // ── V1 · re-scan the serialised bytes ────────────────────────────────────
   // Deliberately over the string, not the object: anything the redactor forgot
   // to walk — a URL, a title, an alt attribute — is inside this string too.
-  const hits = scanPatterns(stripHandles(payload)).filter((h) => h.p >= 0.85);
+  const hits = scanPatterns(stripHandles(payload)).filter((h) => {
+    if (h.p >= 0.85) return true;
+    if (h.cls === "phone" && h.p >= 0.70) {
+      // Look for "call/phone" in the 60 bytes preceding the hit in the payload
+      const ctx = stripHandles(payload).slice(Math.max(0, h.start - 60), h.start).toLowerCase();
+      return /phone|mobile|contact|tel|whatsapp|call/.test(ctx);
+    }
+    return false;
+  });
   checks.push({
     id: "V1",
     name: "Re-scan serialised bytes",

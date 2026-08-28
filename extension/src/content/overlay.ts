@@ -60,8 +60,8 @@ function ensure(): ShadowRoot {
     .redact{position:fixed;background:#0E1214;border:1.5px solid #F08A7E;border-radius:2px;
        display:flex;align-items:center;justify-content:center;overflow:hidden;
        font:700 9px/1 ui-monospace,Consolas,monospace;color:#F08A7E}
-    .fill{position:fixed;border:1.5px dashed #4CC5D0;border-radius:2px;box-sizing:border-box;
-       background:rgba(76,197,208,.10);display:flex;align-items:center;justify-content:center;
+    .fill{position:fixed;border:2px dashed #4CC5D0;border-radius:2px;box-sizing:border-box;
+       background:transparent;display:flex;align-items:center;justify-content:center;
        overflow:hidden;font:600 9px/1 ui-monospace,Consolas,monospace;color:#0d6f78}
     .hl{position:fixed;border:3px solid #E39A57;border-radius:3px;box-sizing:border-box}
     .dim{opacity:.3}
@@ -124,6 +124,9 @@ function paint(s: Scene): void {
     const c = COLOR[e.role] ?? "#5C6B6F";
     const offscreen = r.bottom < 0 || r.top > innerHeight;
 
+    const hasFinding = s.findings.some((f) => f.elementId === e.id && f.fate !== "keep");
+    if (!LABELLED.has(e.role) && !hasFinding) continue;
+
     const box = document.createElement("div");
     box.className = offscreen ? "b dim" : "b";
     box.style.cssText += `left:${r.left}px;top:${r.top}px;width:${r.width}px;height:${r.height}px;border-color:${c}`;
@@ -132,16 +135,10 @@ function paint(s: Scene): void {
     if (!LABELLED.has(e.role)) continue;
     if (r.width < 40 || r.height < 12) continue;
 
-    const ly = Math.max(0, r.top - 13);
-    const approxW = (e.id.length + e.role.length + 2) * 5.4 + 8;
-    if (placed.some((p) => Math.abs(p.y - ly) < 12 && r.left < p.x + p.w + 4 && p.x < r.left + approxW + 4)) {
-      continue;
-    }
-    placed.push({ x: r.left, y: ly, w: approxW });
-
+    const lx = Math.min(window.innerWidth - 60, r.right + 4);
     const tag = document.createElement("div");
     tag.className = "t";
-    tag.style.cssText += `left:${r.left}px;top:${ly}px;background:${c}`;
+    tag.style.cssText += `left:${lx}px;top:${r.top}px;background:${c};opacity:0.9`;
     tag.textContent = `${e.id} ${e.role}`;
     root.append(tag);
   }
@@ -166,7 +163,7 @@ function paint(s: Scene): void {
     const node = s.nodes.get(f.elementId);
     if (!node || !node.isConnected) continue;
 
-    for (const r of rectsFor(node, f)) {
+    for (const r of rectsFor(s, node, f)) {
       if (!inView(r)) continue;
       const d = document.createElement("div");
       d.className = "redact";
@@ -182,9 +179,37 @@ function paint(s: Scene): void {
  * those characters — that is what keeps redaction precision high instead of
  * blanking whole paragraphs.
  */
-function rectsFor(el: Element, f: Finding): DOMRect[] {
+function rectsFor(s: Scene, el: Element, f: Finding): DOMRect[] {
   if (f.field === "text" && f.start != null && f.end != null) {
-    const rects = rangeRects(el, f.start, f.end);
+    const rawEl = s.elements.find((e) => e.id === f.elementId);
+    let start = f.start;
+    let end = f.end;
+    
+    // dom-graph.ts collapses whitespace in text, shifting offsets relative to the raw DOM.
+    // Re-align by finding the matched string directly in the DOM's textContent.
+    if (rawEl?.text && el.textContent) {
+      const matchText = rawEl.text.slice(f.start, f.end);
+      let bestIdx = -1;
+      let minDist = Infinity;
+      let searchIdx = 0;
+      while (searchIdx !== -1) {
+        searchIdx = el.textContent.indexOf(matchText, searchIdx);
+        if (searchIdx !== -1) {
+          const dist = Math.abs(searchIdx - f.start);
+          if (dist < minDist) {
+            minDist = dist;
+            bestIdx = searchIdx;
+          }
+          searchIdx += 1;
+        }
+      }
+      if (bestIdx !== -1) {
+        start = bestIdx;
+        end = bestIdx + matchText.length;
+      }
+    }
+    
+    const rects = rangeRects(el, start, end);
     if (rects.length) return rects;
   }
   return [el.getBoundingClientRect()];

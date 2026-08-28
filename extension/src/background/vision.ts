@@ -11,11 +11,12 @@ import type { Capture } from "./capture";
 const OFFSCREEN_PATH = "offscreen.html";
 
 export interface VisionResult {
-  /** Face boxes in CSS pixels, viewport-relative — same space as element bboxes. */
-  faces: Array<BBox & { score: number }>;
+  /** Vision boxes in CSS pixels, viewport-relative with assigned class. */
+  regions: Array<BBox & { score: number; cls: string }>;
   provider: string;
   inferMs: number;
   passes: number;
+  memoryMB?: number;
   error?: string;
 }
 
@@ -62,8 +63,8 @@ export async function warmup(): Promise<{ ok: boolean; provider?: string; loadMs
  * could not explain — a face inside a 96px avatar is invisible at the model's
  * 320x240 input, so those crops get their own pass.
  */
-export async function detectFaces(cap: Capture, crops: BBox[]): Promise<VisionResult> {
-  const empty: VisionResult = { faces: [], provider: "none", inferMs: 0, passes: 0 };
+export async function detectRegions(cap: Capture, crops: BBox[]): Promise<VisionResult> {
+  const empty: VisionResult = { regions: [], provider: "none", inferMs: 0, passes: 0 };
   if (!(await ensureOffscreen())) return { ...empty, error: "offscreen unavailable" };
 
   const img = cap.ctx.getImageData(0, 0, cap.width, cap.height);
@@ -89,16 +90,18 @@ export async function detectFaces(cap: Capture, crops: BBox[]): Promise<VisionRe
     if (!reply?.ok) return { ...empty, error: reply?.error ?? "no reply from the model" };
 
     return {
-      faces: (reply.faces ?? []).map((f: { x: number; y: number; w: number; h: number; score: number }) => ({
-        x: f.x / cap.scale,
-        y: f.y / cap.scale,
-        w: f.w / cap.scale,
-        h: f.h / cap.scale,
-        score: f.score,
+      regions: (reply.regions ?? []).map((r: { x: number; y: number; w: number; h: number; score: number; cls: string }) => ({
+        x: r.x / cap.scale,
+        y: r.y / cap.scale,
+        w: r.w / cap.scale,
+        h: r.h / cap.scale,
+        score: r.score,
+        cls: r.cls,
       })),
       provider: reply.provider ?? "wasm",
       inferMs: reply.inferMs ?? 0,
       passes: reply.passes ?? 0,
+      memoryMB: reply.memoryMB,
     };
   } catch (e) {
     return { ...empty, error: e instanceof Error ? e.message : String(e) };

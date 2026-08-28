@@ -63,38 +63,43 @@ export async function execute(action: AgentAction, resolved?: string, expectSig?
   }
 
   const id = action.target;
-  if (!id) return { ok: false, note: "action has no target" };
+  if (!id && action.kind !== "clear") return { ok: false, note: "action has no target" };
 
-  const el = registry.get(id);
-  const meta = registryMeta.get(id);
-  if (!el || !meta) return { ok: false, note: `${id} is not in the current graph` };
-  if (!el.isConnected) return { ok: false, note: `${id} has been removed from the document` };
+  const el = id ? registry.get(id) : undefined;
+  const meta = id ? registryMeta.get(id) : undefined;
+  if (id && (!el || !meta)) return { ok: false, note: `${id} is not in the current graph` };
+  if (id && el && !el.isConnected) return { ok: false, note: `${id} has been removed from the document` };
 
   // ── E3 · grounding ───────────────────────────────────────────────────────
-  const r = el.getBoundingClientRect();
-  const nowSig = signature({
-    role: meta.role,
-    name: meta.name,
-    tag: meta.tag,
-    bbox: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
-  });
-  const want = expectSig ?? meta.sig;
-  if (want && nowSig !== want) {
-    return { ok: false, note: "grounding failed — the page changed, re-perceiving instead of clicking", postSig: nowSig };
+  let nowSig: string | undefined;
+  if (el && meta) {
+    const r = el.getBoundingClientRect();
+    nowSig = signature({
+      role: meta.role,
+      name: meta.name,
+      tag: meta.tag,
+      bbox: { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) },
+    });
+    const want = expectSig ?? meta.sig;
+    if (want && nowSig !== want) {
+      return { ok: false, note: "grounding failed — the page changed, re-perceiving instead of clicking", postSig: nowSig };
+    }
   }
 
   // ── E4 · execute ─────────────────────────────────────────────────────────
   switch (action.kind) {
     case "click": {
+      if (!el) return { ok: false, note: "click needs a target" };
       (el as HTMLElement).scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
       await sleep(40);
       (el as HTMLElement).focus?.();
       (el as HTMLElement).click();
       await sleep(160);
-      return { ok: true, note: `clicked ${meta.name || id}`, postSig: nowSig };
+      return { ok: true, note: `clicked ${meta?.name || id}`, postSig: nowSig };
     }
 
     case "fill": {
+      if (!el) return { ok: false, note: "fill needs a target" };
       if (resolved == null) return { ok: false, note: "fill without a resolved value" };
       const ok = setFieldValue(el, resolved);
       if (!ok) return { ok: false, note: "element is not a fillable field" };
@@ -106,14 +111,15 @@ export async function execute(action: AgentAction, resolved?: string, expectSig?
       return {
         ok: ingest.verified,
         note: ingest.verified
-          ? `filled ${meta.name || id} — value verified in the field`
-          : `fill did not stick in ${meta.name || id}: ${ingest.reason}`,
+          ? `filled ${meta?.name || id} — value verified in the field`
+          : `fill did not stick in ${meta?.name || id}: ${ingest.reason}`,
         postSig: nowSig,
         ingest,
       };
     }
 
     case "select": {
+      if (!el) return { ok: false, note: "select needs a target" };
       if (resolved == null) return { ok: false, note: "select without a value" };
       const sel = el as HTMLSelectElement;
       if (sel.tagName !== "SELECT") return { ok: false, note: "target is not a <select>" };
@@ -124,6 +130,24 @@ export async function execute(action: AgentAction, resolved?: string, expectSig?
       sel.value = opt.value;
       sel.dispatchEvent(new Event("change", { bubbles: true }));
       return { ok: true, note: `selected ${opt.text}`, postSig: nowSig };
+    }
+
+    case "clear": {
+      const targets = el ? [el] : Array.from(document.querySelectorAll("input:not([type='hidden']), textarea"));
+      let cleared = 0;
+      let failed = 0;
+      for (const t of targets) {
+        if (setFieldValue(t, "")) {
+          const ingest = checkIngestion(t, "");
+          if (ingest.verified) cleared++;
+          else failed++;
+        }
+      }
+      return { 
+        ok: failed === 0, 
+        note: `cleared ${cleared} fields${failed ? `, ${failed} failed` : ""}`, 
+        postSig: nowSig 
+      };
     }
 
     default:

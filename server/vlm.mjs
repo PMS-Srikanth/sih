@@ -41,7 +41,7 @@ You never receive raw page content. You receive a sanitized ScreenGraph where:
 
 Reply with EXACTLY ONE JSON object and nothing else. No prose, no code fences.
 
-  {"type":"action","thought":"...","action":{"kind":"click|fill|select|scroll|navigate|wait|done","target":"el_12","value":"EMAIL_1"},"confidence":0.9}
+  {"type":"action","thought":"...","action":{"kind":"click|fill|select|scroll|clear|navigate|wait|done","target":"el_12","value":"EMAIL_1"},"confidence":0.9}
   {"type":"data","answer":"..."}
   {"type":"ask_user","question":"..."}
 

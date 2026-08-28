@@ -37,7 +37,9 @@ You never receive raw page content. You receive a sanitized ScreenGraph in which
 
 Return exactly one JSON object, one action at a time. When filling a field with
 personal data you MUST write the handle, never a literal value. The client
-resolves handles locally; you never learn what they contain.`;
+resolves handles locally; you never learn what they contain.
+
+The action kinds allowed are: click, fill, select, scroll, clear, navigate, wait, done.`;
 
 // ── the planner ────────────────────────────────────────────────────────────
 
@@ -53,6 +55,16 @@ function plan(ctx) {
   // 1 · A question about the page is answered from the sanitized context.
   if (/^(what|which|how many|is there|does|find|tell me|show me|read)\b/.test(task)) {
     return answer(ctx, task);
+  }
+
+  // 1.5 · A request to clear/reset the form
+  if (/\b(clear|empty|reset)\b/i.test(task)) {
+    return {
+      type: "action",
+      thought: "The user is asking to clear or reset the form fields.",
+      action: { kind: "clear" },
+      confidence: 0.95,
+    };
   }
 
   // 2 · Fill the first EMPTY field the client says its local profile can serve.

@@ -42,6 +42,9 @@ export function checkPolicy(
   if (action.kind === "scroll" || action.kind === "wait" || action.kind === "done" || action.kind === "extract") {
     return { allow: true, reason: "non-mutating action" };
   }
+  if (action.kind === "clear" && !action.target) {
+    return { allow: true, reason: "global clear action" };
+  }
 
   if (!el) {
     return { allow: false, reason: `target ${action.target ?? "(none)"} not present in the current ScreenGraph` };

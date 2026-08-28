@@ -22,7 +22,7 @@ import { route } from "@/agent/router";
 import { checkPolicy } from "@/agent/policy";
 import { DEFAULT_SERVER, send } from "./transport";
 import { captureViewport, encode, maskRegions, planVision, verifyMasks } from "./capture";
-import { detectFaces, warmup } from "./vision";
+import { detectRegions, warmup } from "./vision";
 
 const MAX_STEPS = 25;
 
@@ -194,6 +194,68 @@ async function runTask(task: string, mode: Mode): Promise<void> {
       // ── 3 · detect ──────────────────────────────────────────────────────
       let mk = performance.now();
       const detections = [...detectDom(graph.elements), ...detectRegex(graph.elements)];
+
+      let cap: Capture | null = null;
+      let visionNote = "";
+      if (mode !== "fast" && windowId != null) {
+        const mkc = performance.now();
+        cap = await captureViewport(windowId);
+        if (cap) {
+          const plan = planVision(cap, graph.elements, graph.viewport, mode);
+          const vision = await detectRegions(cap, plan.regions);
+          
+          for (const r of vision.regions) {
+            let bestEl: typeof graph.elements[0] | null = null;
+            let maxOverlap = 0;
+            for (const el of graph.elements) {
+               const overlapW = Math.max(0, Math.min(r.x + r.w, el.bbox.x + el.bbox.w) - Math.max(r.x, el.bbox.x));
+               const overlapH = Math.max(0, Math.min(r.y + r.h, el.bbox.y + el.bbox.h) - Math.max(r.y, el.bbox.y));
+               const intersection = overlapW * overlapH;
+               if (intersection > 0) {
+                 const elArea = el.bbox.w * el.bbox.h;
+                 const rArea = r.w * r.h;
+                 const iou = intersection / (elArea + rArea - intersection);
+                 const containment = intersection / rArea;
+                 if (iou > 0.5 || containment > 0.8) {
+                   const score = Math.max(iou, containment);
+                   if (score > maxOverlap) {
+                     maxOverlap = score;
+                     bestEl = el;
+                   }
+                 }
+               }
+            }
+            
+            // Explicit calibration: ViT softmax probabilities are frequently overconfident on
+            // zero-shot cropped regions. We apply a 0.5 calibration weight so that high-confidence
+            // raw ViT scores (e.g. 0.80) map to ambiguous fusion probabilities (e.g. 0.40).
+            // This ensures ViT acts as corroborating evidence (0.40 ViT + 0.80 DOM = 0.88) 
+            // without overriding high-threshold tie-breaks on its own.
+            const pCalibrated = r.model === "vit" ? r.score * 0.5 : r.score;
+
+            detections.push({
+              elementId: bestEl ? bestEl.id : `v_${Math.round(r.x)}_${Math.round(r.y)}`,
+              field: "element",
+              cls: r.cls as any,
+              p: pCalibrated,
+              source: "vision",
+              evidence: `${r.model} raw=${r.score.toFixed(2)} cal=${pCalibrated.toFixed(2)}`,
+              bbox: bestEl ? undefined : r
+            });
+          }
+
+          t.capture = round(performance.now() - mkc);
+          visionNote =
+            `${vision.provider} · ${vision.passes} pass(es) ${vision.inferMs}ms · ` +
+            `DOM explains ${plan.coveragePct}% · ${plan.regions.length} region(s) inspected · ` +
+            `${vision.regions.length} match(es) found` +
+            (vision.memoryMB ? ` · ${vision.memoryMB}MB peak memory` : "") +
+            (vision.error ? ` · ${vision.error}` : "");
+        } else {
+          visionNote = "frame capture unavailable on this page";
+        }
+      }
+
       const findings = fuse({ elements: graph.elements, detections });
       t.detect = round(performance.now() - mk);
 
@@ -202,9 +264,6 @@ async function runTask(task: string, mode: Mode): Promise<void> {
       let { context, applied, stats } = redact({ graph, findings, vault, task, mode, history, profile });
       t.redact = round(performance.now() - mk);
 
-      // Show what was ACTUALLY redacted, plus which blank fields the local
-      // profile could serve. A detector firing on an empty field is a correct
-      // classification, not a redaction, and must not be drawn as one.
       void chrome.tabs
         .sendMessage(tabId, {
           kind: "showRedactions",
@@ -214,57 +273,29 @@ async function runTask(task: string, mode: Mode): Promise<void> {
         .catch(() => {});
 
       // ── 4b · pixels ─────────────────────────────────────────────────────
-      // Fast mode never captures. Otherwise: capture, work out where a vision
-      // model would have to look, paint solid masks over the regions the
-      // privacy engine flagged, and confirm they actually landed.
-      let visionNote = "";
       let maskCheck: { ok: boolean; checked: number; failed: number } | null = null;
-
-      if (mode !== "fast" && windowId != null) {
-        const mkc = performance.now();
-        const cap = await captureViewport(windowId);
-        if (cap) {
-          const plan = planVision(cap, graph.elements, graph.viewport, mode);
-
-          // Regions the DOM flagged from semantics — an <img> called "ID proof".
+      let painted = 0;
+      if (cap) {
           const toMask: Array<{ bbox: typeof graph.elements[number]["bbox"] }> = applied
             .filter((f) => f.fate === "mask")
-            .map((f) => graph.elements.find((e) => e.id === f.elementId))
-            .filter((e): e is NonNullable<typeof e> => !!e)
-            .map((e) => ({ bbox: e.bbox }));
+            .map((f) => {
+               if (f.bbox) return { bbox: f.bbox as typeof graph.elements[number]["bbox"] };
+               const el = graph.elements.find((e) => e.id === f.elementId);
+               return el ? { bbox: el.bbox } : null;
+            })
+            .filter((x): x is NonNullable<typeof x> => !!x);
 
-          // The model reads the actual pixels. This is what finds a face the
-          // DOM has no words for.
-          const vision = await detectFaces(cap, plan.regions);
-          for (const f of vision.faces) {
-            toMask.push({ bbox: { x: f.x, y: f.y, w: f.w, h: f.h } });
-            context.regions.push({
-              bbox: [Math.round(f.x), Math.round(f.y), Math.round(f.w), Math.round(f.h)],
-              cls: "face",
-              state: "masked",
-            });
-            stats.masked++;
-          }
-
-          const painted = maskRegions(cap, toMask);
+          painted = maskRegions(cap, toMask);
           maskCheck = verifyMasks(cap, toMask);
+
+          if (visionNote && visionNote !== "frame capture unavailable on this page") {
+            visionNote += ` · ${painted} mask(s) painted`;
+          }
 
           if (needImage) {
             context.image = await encode(cap);
             needImage = false;
           }
-
-          t.capture = round(performance.now() - mkc);
-          visionNote =
-            `${vision.provider} · ${vision.passes} pass(es) ${vision.inferMs}ms · ` +
-            `DOM explains ${plan.coveragePct}% · ${plan.regions.length} region(s) inspected · ` +
-            `${vision.faces.length} face(s) found · ${painted} mask(s) painted` +
-            (vision.error ? ` · ${vision.error}` : "");
-        } else {
-          // Silent failure here would look like "vision is off" rather than
-          // "the browser refused", so say which it was.
-          visionNote = "frame capture unavailable on this page";
-        }
       }
 
       // ── 5 · verify, with V6 escalation ──────────────────────────────────

@@ -64,7 +64,7 @@ const elements: RawElement[] = [
   field({ name: "Aadhaar number", label: "Aadhaar number", value: AADHAAR }),
   field({ name: "Card number", label: "Card number", autocomplete: "cc-number", value: CARD }),
   field({ name: "Street address", label: "Street address", autocomplete: "street-address", value: "42 Banjara Hills, Hyderabad 500034" }),
-  text("Questions? Write to priya.raghavan@northwind-careers.com or call 9845017632.", "Before you apply"),
+  text("Questions about this role? Write to our recruiter Priya Raghavan at priya.raghavan@northwind-careers.com or call 9845017632 between 10:00 and 18:00 IST. Your reference number for this posting is 4471902238 — quote it in any email. Order number 1234567890 relates to your earlier purchase and is not needed here.", "Before you apply"),
   text("Pay to srikar@okhdfcbank before Friday.", "Payment"),
   text("Bearer token: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U", "Debug"),
 
@@ -179,6 +179,12 @@ for (const e of context.elements.filter((x) => x.holds || x.sensitive).slice(0, 
 const proseSample = context.elements.find((e) => e.name === "Before you apply");
 if (proseSample?.text) console.log(`\n  prose → "${proseSample.text}"`);
 
+let phoneLeaked = false;
+if (proseSample?.text && proseSample.text.includes("9845017632")) {
+  console.error("  FAIL: Phone number 9845017632 leaked in prose!");
+  phoneLeaked = true;
+}
+
 console.log(`\n${bar}\n  VERIFIER — the gate\n`);
 for (const c of v.checks) {
   console.log(`  ${c.passed ? "PASS" : "FAIL"}  ${c.id}  ${c.name.padEnd(28)} ${c.detail ?? ""}`);
@@ -232,25 +238,61 @@ const media: RawElement[] = [
   field({ role: "image", tag: "img", name: "Uploaded identity document", bbox: { x: 60, y: 200, w: 150, h: 150 } }),
   field({ role: "image", tag: "img", name: "Profile photo", bbox: { x: 240, y: 200, w: 96, h: 96 } }),
   field({ role: "image", tag: "img", name: "Company logo", bbox: { x: 10, y: 10, w: 120, h: 40 } }),
+  field({ role: "image", tag: "img", name: "Signed contract", bbox: { x: 600, y: 200, w: 150, h: 150 } }),
   field({ role: "image", tag: "canvas", name: "", bbox: { x: 400, y: 200, w: 300, h: 200 } }),
 ];
-const mediaFindings = fuse({ elements: media, detections: detectDom(media) });
+const mediaDetections = detectDom(media);
+
+// Test 1: Vision-only spatial evidence (no DOM element overlap)
+mediaDetections.push({
+  elementId: "v_400_200", field: "element", cls: "document", p: 0.92, source: "vision", evidence: "ViT document",
+  bbox: { x: 400, y: 200, w: 300, h: 200 }
+});
+
+// Test 2: Vision finding mapped to a DOM element (overlaps an image)
+// Suppose detectDom already found media[3] to be an id_document with p=0.82
+// ViT sees the SAME element and thinks it's an id_document with p=0.95
+mediaDetections.push({
+  elementId: media[3].id, field: "element", cls: "id_document", p: 0.95, source: "vision", evidence: "ViT signature",
+  bbox: media[3].bbox
+});
+
+// Test 3: Ambiguous vision probability (e.g. 0.40) mapped to DOM element
+mediaDetections.push({
+  elementId: media[1].id, field: "element", cls: "face", p: 0.40, source: "vision", evidence: "ViT face",
+  bbox: media[1].bbox
+});
+
+const mediaFindings = fuse({ elements: media, detections: mediaDetections });
+
 for (const m of media) {
-  const f = mediaFindings.find((x) => x.elementId === m.id);
-  console.log(
-    `  ${(m.name || `<${m.tag}>`).slice(0, 26).padEnd(28)} ` +
-    `${f ? `${f.fate.toUpperCase()} ${f.cls}  p=${f.p.toFixed(2)}` : "no DOM signal — vision decides"}`,
-  );
+  const fs = mediaFindings.filter((x) => x.elementId === m.id);
+  for (const f of fs) {
+    console.log(
+      `  ${(m.name || `<${m.tag}>`).slice(0, 26).padEnd(28)} ` +
+      `${f.fate.toUpperCase()} ${f.cls}  p=${f.p.toFixed(2)} [${f.sources.join("+")}]`,
+    );
+  }
+  if (!fs.length) {
+    console.log(`  ${(m.name || `<${m.tag}>`).slice(0, 26).padEnd(28)} no signal`);
+  }
 }
-const idMasked = mediaFindings.some((f) => f.cls === "id_document" && f.fate === "mask");
-const photoMasked = mediaFindings.some((f) => f.cls === "face" && f.fate === "mask");
+const rawFs = mediaFindings.filter((x) => !media.some(m => m.id === x.elementId));
+for (const f of rawFs) {
+  console.log(`  RAW SPATIAL (v_400_200)      ${f.fate.toUpperCase()} ${f.cls}  p=${f.p.toFixed(2)} [${f.sources.join("+")}]`);
+}
+
+const idMasked = mediaFindings.some((f) => f.cls === "id_document" && f.fate === "mask" && f.sources.includes("dom") && f.sources.includes("vision"));
+const photoMasked = mediaFindings.some((f) => f.cls === "face" && f.fate === "mask" && f.p > 0.85); // 0.8 (DOM) and 0.4 (ViT) = 1 - (1-0.8)*(1-0.4) = 1 - 0.2*0.6 = 1 - 0.12 = 0.88
 const logoKept = !mediaFindings.some((f) => f.elementId === media[2].id);
+const docMasked = mediaFindings.some((f) => f.elementId === "v_400_200" && f.cls === "document" && f.fate === "mask");
+
 console.log(`
-  ID document masked  ${idMasked ? "yes" : "NO"}`);
-console.log(`  profile photo masked ${photoMasked ? "yes" : "NO"}`);
-console.log(`  logo left alone      ${logoKept ? "yes" : "NO — over-redacting"}`);
-console.log(`  bare <canvas>        no DOM signal, so it goes to the model as a crop`);
-const visualOk = idMasked && photoMasked && logoKept;
+  Vision+DOM Noisy-OR (contract)       ${idMasked ? "PASS" : "FAIL"}`);
+console.log(`  Ambiguous ViT (0.4) + DOM (0.8)      ${photoMasked ? "PASS (p=0.88)" : "FAIL"}`);
+console.log(`  Logo left alone                      ${logoKept ? "PASS" : "FAIL — over-redacting"}`);
+console.log(`  Raw spatial vision masked            ${docMasked ? "PASS" : "FAIL"}`);
+const visualOk = idMasked && photoMasked && logoKept && docMasked;
 
 // ── coverage-guided vision ────────────────────────────────────────────────
 
@@ -397,12 +439,13 @@ const buttons: RawElement[] = [
 ];
 const navGraph: RawScreenGraph = { ...graph, elements: buttons, readingOrder: buttons.map((e) => e.id) };
 
-const ROUTER_CASES: Array<[string, "local" | "server"]> = [
-  ['Click "Save draft"', "local"],          // quoted, exact
-  ["save draft", "local"],                  // bare name, near-verbatim
-  ["Submit application", "local"],          // bare name, near-verbatim
-  ["scroll down", "local"],                 // mechanical
-  ["sign in", "local"],                     // "Sign in" 1.00 beats "Sign in with SSO" 0.50
+const ROUTER_CASES: Array<[string, "local" | "server", string?]> = [
+  ['Click "Save draft"', "local", "click"],          // quoted, exact
+  ["save draft", "local", "click"],                  // bare name, near-verbatim
+  ["Submit application", "local", "click"],          // bare name, near-verbatim
+  ["scroll down", "local", "scroll"],                 // mechanical
+  ["clear all the input elements from the form", "local", "clear"], // unambiguous clear
+  ["sign in", "local", "click"],                     // "Sign in" 1.00 beats "Sign in with SSO" 0.50
   ["click download", "server"],             // two controls share the name — cannot choose
   ["hidden action", "server"],              // occluded — must not be actioned locally
   ["Fill this application from my profile", "server"],
@@ -410,10 +453,13 @@ const ROUTER_CASES: Array<[string, "local" | "server"]> = [
 ];
 
 let routerFails = 0;
-for (const [task, want] of ROUTER_CASES) {
+for (const [task, want, wantAction] of ROUTER_CASES) {
   const d = route(navGraph, task, 0);
   const got = d.route === "done" ? "server" : d.route;
-  const pass = got === want;
+  let pass = got === want;
+  if (pass && want === "local" && wantAction) {
+    pass = (d as any).action?.kind === wantAction;
+  }
   if (!pass) routerFails++;
   console.log(
     `  ${pass ? "PASS" : "FAIL"}  ${got.toUpperCase().padEnd(7)} ${`"${task}"`.slice(0, 42).padEnd(44)} ${d.why}`,
@@ -426,9 +472,35 @@ console.log(
 
 console.log(`\n${bar}\n`);
 
-const ok = v.passed && fn === 0 && fp === 0 && routerFails === 0 && leaks.length === 0 && ver2.passed && cryptoOk && coverageOk && visualOk && ingestOk;
+const ok = v.passed && fn === 0 && fp === 0 && routerFails === 0 && leaks.length === 0 && ver2.passed && cryptoOk && coverageOk && visualOk && ingestOk && !phoneLeaked;
+
+import * as fs from "fs";
+const evalOutput = {
+  precision: parseFloat(precision.toFixed(3)),
+  recall: parseFloat(recall.toFixed(3)),
+  f1: parseFloat(f1.toFixed(3)),
+  redaction: {
+    dropped: stats.dropped,
+    substituted: stats.substituted,
+    masked: stats.masked,
+    kept: stats.kept,
+  },
+  tests: {
+    router: routerFails === 0,
+    crypto: cryptoOk,
+    coverage: coverageOk,
+    visual: visualOk,
+    ingest: ingestOk,
+    leaks: leaks.length === 0 && !phoneLeaked
+  },
+  pass: ok
+};
+
+fs.writeFileSync("eval_output.json", JSON.stringify(evalOutput, null, 2));
+
 if (!ok) {
   console.log(`  RESULT: needs work — ${fn} miss(es), ${fp} over-redaction(s)\n`);
   process.exit(1);
 }
-console.log(`  RESULT: all positives caught, no over-redaction, verifier passed\n`);
+console.log(`  RESULT: all positives caught, no over-redaction, verifier passed`);
+console.log(`  Output saved to eval_output.json\n`);
