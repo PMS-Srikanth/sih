@@ -12,6 +12,20 @@ import { pipeline, env, ImageClassificationPipeline } from "@xenova/transformers
 const MODEL_URL = chrome.runtime.getURL("models/ultraface-320.onnx");
 const WASM_BASE = chrome.runtime.getURL("ort/");
 
+/**
+ * Both models are bundled in the extension. Transformers.js will happily fetch
+ * weights from the Hugging Face hub, which would make this document phone home
+ * on first use — breaking the guarantee in the header above, failing on a
+ * venue's wifi, and being blocked by our own CSP anyway. So remote models are
+ * switched OFF explicitly and the local path is pinned.
+ */
+env.allowLocalModels = true;
+env.allowRemoteModels = false;
+env.localModelPath = chrome.runtime.getURL("models/");
+env.backends.onnx.wasm.wasmPaths = WASM_BASE;
+
+const VIT_MODEL = "vit-base-patch16-224";
+
 export interface VisionRequest {
   target: "offscreen";
   kind: "warmup" | "detect";
@@ -21,6 +35,12 @@ export interface VisionRequest {
   buffer?: ArrayBuffer;
   /** Sub-regions, in frame pixels, to run at higher effective resolution. */
   crops?: Array<{ x: number; y: number; w: number; h: number }>;
+  /**
+   * Run the ViT classifier as well as the detector. It is ~88 MB against
+   * UltraFace's 1.2 MB, so it is reserved for Thorough mode — that is the
+   * latency-versus-accuracy dial the problem statement asks us to expose.
+   */
+  useVit?: boolean;
 }
 
 export interface VisionReply {
@@ -58,15 +78,22 @@ chrome.runtime.onMessage.addListener((msg: VisionRequest, _sender, respond) => {
 
   (async () => {
     try {
-      const tVit = performance.now();
-      if (!vit) {
-        // Disable local models to fetch from HF hub since we don't have it locally
-        env.allowLocalModels = false;
-        vit = await pipeline("image-classification", "Xenova/vit-base-patch16-224");
-        vitLoadMs = performance.now() - tVit;
-      }
-
+      // The detector is small and always loaded. The ViT is loaded lazily, and
+      // only when a step actually asks for it, so Fast and Balanced never pay
+      // its 88 MB.
       const info = await load(MODEL_URL, WASM_BASE);
+
+      if (msg.useVit && !vit) {
+        const tVit = performance.now();
+        try {
+          vit = await pipeline("image-classification", VIT_MODEL);
+          vitLoadMs = Math.round(performance.now() - tVit);
+        } catch (e) {
+          // A missing or corrupt bundle must not take the detector down with it.
+          console.warn("[cordon] ViT unavailable, continuing with the detector only:", e);
+          vit = null;
+        }
+      }
 
       if (msg.kind === "warmup") {
         respond({ ok: true, provider: info.provider, loadMs: info.loadMs + vitLoadMs } satisfies VisionReply);
@@ -97,10 +124,16 @@ chrome.runtime.onMessage.addListener((msg: VisionRequest, _sender, respond) => {
         const out = await vit(url, { topk: 3 });
         URL.revokeObjectURL(url);
         inferMs += performance.now() - t0;
-        
+
+        // Transformers.js types this as a union of one result or many; normalise
+        // to an array before reading, rather than casting the whole thing away.
+        const preds: Array<{ label: string; score: number }> =
+          Array.isArray(out) ? (out as Array<{ label: string; score: number }>)
+                             : [out as unknown as { label: string; score: number }];
+
         let bestCls = "";
         let bestScore = 0;
-        for (const res of out) {
+        for (const res of preds) {
           const mapped = VIT_MAP[res.label];
           if (mapped && res.score > bestScore) {
             bestCls = mapped;

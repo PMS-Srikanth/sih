@@ -65,7 +65,10 @@ export type PiiClass =
   | "password" | "otp" | "apikey"
   | "email" | "phone" | "person" | "address"
   | "card" | "aadhaar" | "pan" | "ifsc" | "upi" | "dob"
-  | "face" | "id_document";
+  // ── visual classes, produced by the on-device models ──────────────────────
+  // face + id_document come from the detector; document + screenshot come from
+  // the ViT classifier, which recognises a page or a paper form as a whole.
+  | "face" | "id_document" | "document" | "screenshot" | "signature";
 
 export type Fate = "drop" | "substitute" | "mask" | "keep";
 export type DetectorSource = "dom" | "regex" | "ner" | "vision";
@@ -82,6 +85,14 @@ export interface Detection {
   p: number;
   source: DetectorSource;
   evidence: string;
+  /**
+   * Where it is, in CSS pixels. Only vision detections carry this: a face has
+   * coordinates but no character offsets, so the redactor masks by box rather
+   * than by span.
+   */
+  bbox?: BBox;
+  /** Which model produced it, for the receipt. */
+  model?: string;
 }
 
 /** A fused decision over one span, after noisy-OR and the context tie-break. */
@@ -96,6 +107,10 @@ export interface Finding {
   fate: Fate;
   /** Populated for `substitute`. */
   handle?: string;
+  /** Set on vision findings — the region to mask, in CSS pixels. */
+  bbox?: BBox;
+  /** Which model produced it, for the receipt. */
+  model?: string;
   /** Why the tie-break landed where it did — shown in the receipt. */
   reason: string;
 }

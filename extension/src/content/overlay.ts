@@ -109,9 +109,6 @@ function paint(s: Scene): void {
   const inView = (r: DOMRect) =>
     r.bottom > -40 && r.top < innerHeight + 40 && r.right > -40 && r.left < innerWidth + 40;
 
-  // Labels are placed after boxes so they sit on top, and are skipped when they
-  // would collide with one already placed.
-  const placed: Array<{ x: number; y: number; w: number }> = [];
 
   for (const e of s.elements) {
     if (e.role === "other") continue;

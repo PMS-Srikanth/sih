@@ -21,7 +21,7 @@ import { fnv1a } from "@/privacy/checksums";
 import { route } from "@/agent/router";
 import { checkPolicy } from "@/agent/policy";
 import { DEFAULT_SERVER, send } from "./transport";
-import { captureViewport, encode, maskRegions, planVision, verifyMasks } from "./capture";
+import { captureViewport, encode, maskRegions, planVision, verifyMasks, type Capture } from "./capture";
 import { detectRegions, warmup } from "./vision";
 
 const MAX_STEPS = 25;
@@ -202,7 +202,9 @@ async function runTask(task: string, mode: Mode): Promise<void> {
         cap = await captureViewport(windowId);
         if (cap) {
           const plan = planVision(cap, graph.elements, graph.viewport, mode);
-          const vision = await detectRegions(cap, plan.regions);
+          // Thorough mode also runs the ViT classifier; Fast and Balanced do not
+          // pay its load, which is what keeps metric 4 honest.
+          const vision = await detectRegions(cap, plan.regions, mode === "thorough");
           
           for (const r of vision.regions) {
             let bestEl: typeof graph.elements[0] | null = null;

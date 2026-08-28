@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "SIH26171 — privacy-preserving on-device vision agent for the browser",
+  "description": "SIH26171 \u2014 privacy-preserving on-device vision agent for the browser",
   "scripts": {
     "build": "node build.mjs",
     "watch": "node build.mjs --watch",
@@ -11,7 +11,8 @@
     "server": "node server/index.mjs",
     "demo": "node demo-pages/serve.mjs",
     "eval": "esbuild eval/smoke.ts --bundle --platform=node --format=esm --alias:@=./extension/src --outfile=dist/smoke.mjs --log-level=error && node dist/smoke.mjs",
-    "model-check": "node eval/model-check.mjs"
+    "model-check": "node eval/model-check.mjs",
+    "fetch-models": "node scripts/fetch-models.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",

@@ -50,7 +50,8 @@
     {
       "resources": [
         "models/*",
-        "ort/*"
+        "ort/*",
+        "models/**/*"
       ],
       "matches": [
         "<all_urls>"

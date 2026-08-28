@@ -29,6 +29,9 @@ const FATE: Record<PiiClass, Finding["fate"]> = {
   dob: "substitute",
   face: "mask",
   id_document: "mask",
+  document: "mask",
+  screenshot: "mask",
+  signature: "mask",
 };
 
 type Key = string;

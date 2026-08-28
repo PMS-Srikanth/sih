@@ -32,6 +32,9 @@ const PREFIX: Record<PiiClass, string> = {
   dob: "DOB",
   face: "FACE",
   id_document: "IDDOC",
+  document: "DOC",
+  screenshot: "SCREEN",
+  signature: "SIGN",
 };
 
 export class Vault {

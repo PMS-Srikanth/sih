@@ -12,7 +12,7 @@ const OFFSCREEN_PATH = "offscreen.html";
 
 export interface VisionResult {
   /** Vision boxes in CSS pixels, viewport-relative with assigned class. */
-  regions: Array<BBox & { score: number; cls: string }>;
+  regions: Array<BBox & { score: number; cls: string; model: string }>;
   provider: string;
   inferMs: number;
   passes: number;
@@ -51,7 +51,7 @@ async function ensureOffscreen(): Promise<boolean> {
 export async function warmup(): Promise<{ ok: boolean; provider?: string; loadMs?: number }> {
   if (!(await ensureOffscreen())) return { ok: false };
   try {
-    const r = await chrome.runtime.sendMessage({ target: "offscreen", kind: "warmup" });
+    const r = await chrome.runtime.sendMessage({ target: "offscreen", kind: "warmup", useVit: false });
     return { ok: !!r?.ok, provider: r?.provider, loadMs: r?.loadMs };
   } catch {
     return { ok: false };
@@ -63,7 +63,7 @@ export async function warmup(): Promise<{ ok: boolean; provider?: string; loadMs
  * could not explain — a face inside a 96px avatar is invisible at the model's
  * 320x240 input, so those crops get their own pass.
  */
-export async function detectRegions(cap: Capture, crops: BBox[]): Promise<VisionResult> {
+export async function detectRegions(cap: Capture, crops: BBox[], useVit = false): Promise<VisionResult> {
   const empty: VisionResult = { regions: [], provider: "none", inferMs: 0, passes: 0 };
   if (!(await ensureOffscreen())) return { ...empty, error: "offscreen unavailable" };
 
@@ -81,6 +81,7 @@ export async function detectRegions(cap: Capture, crops: BBox[]): Promise<Vision
     const reply = await chrome.runtime.sendMessage({
       target: "offscreen",
       kind: "detect",
+      useVit,
       width: cap.width,
       height: cap.height,
       buffer: img.data.buffer,
@@ -90,7 +91,7 @@ export async function detectRegions(cap: Capture, crops: BBox[]): Promise<Vision
     if (!reply?.ok) return { ...empty, error: reply?.error ?? "no reply from the model" };
 
     return {
-      regions: (reply.regions ?? []).map((r: { x: number; y: number; w: number; h: number; score: number; cls: string }) => ({
+      regions: (reply.regions ?? []).map((r: { x: number; y: number; w: number; h: number; score: number; cls: string; model?: string }) => ({
         x: r.x / cap.scale,
         y: r.y / cap.scale,
         w: r.w / cap.scale,

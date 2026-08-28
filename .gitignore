@@ -10,3 +10,10 @@ __pycache__/
 .venv/
 venv/
 .DS_Store
+
+# The ViT classifier is 84 MB — fetched with `npm run fetch-models`, not committed.
+# UltraFace (1.2 MB) IS committed, because the extension needs it to work at all.
+extension/public/models/vit-base-patch16-224/
+
+# Written by `npm run eval`
+eval_output.json
