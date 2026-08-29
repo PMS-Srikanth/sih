@@ -15,7 +15,8 @@
     "fetch-models": "node scripts/fetch-models.mjs",
     "vlm-check": "node eval/vlm-check.mjs",
     "browser-check": "node eval/browser-check.mjs",
-    "live-model": "node eval/live-model-check.mjs"
+    "live-model": "node eval/live-model-check.mjs",
+    "doctor": "node scripts/doctor.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",

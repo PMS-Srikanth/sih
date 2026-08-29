@@ -28,9 +28,37 @@ npm run server         # → http://127.0.0.1:8787/agent
 npm run demo           # → http://127.0.0.1:8788/
 ```
 
-`dist/` is not committed, so **run `npm run build` after cloning** or Chrome will have
-nothing to load. The side-panel header prints a build stamp: if it does not match what
-`npm run build` printed, the extension was not reloaded and you are looking at stale code.
+Then load it: `chrome://extensions` → Developer mode → **Load unpacked** → select **`dist/`**.
+
+### Three things that catch everyone
+
+These are the reason one person sees a feature and someone else on the same commit
+does not. If something looks missing, it is almost always one of these.
+
+**1 · Load `dist/`, not `extension/`.** `dist/` is gitignored and does not exist until
+you run `npm run build`. Pointing Chrome at the repo root or at `extension/` gives you
+an extension that loads but does nothing.
+
+**2 · Reload the extension after every build.** Chrome keeps the old copy until you click
+Reload on the card. The side-panel header prints a build stamp — if it does not match what
+`npm run build` just printed, none of your changes are live and you are debugging code
+that is not running.
+
+**3 · Set up *My data* on your own machine.** The profile is encrypted with a passphrase
+you choose and stored only on your device, so it is deliberately not in git. Until you
+open the side panel, expand **My data** and create a vault, "fill this form from my
+profile" has nothing to fill from and will look like it silently does nothing. Every
+teammate has to do this once, on their own laptop. Saved drafts work the same way —
+they live in that browser's `localStorage`.
+
+### If it still is not working
+
+```bash
+npm run doctor
+```
+
+Checks this machine and names what is wrong, with the command that fixes it: missing
+build, stale build, servers down, missing models, no browser. It changes nothing.
 
 Optional, and only if you want Thorough mode's ViT classifier:
 
@@ -41,13 +69,7 @@ npm run fetch-models   # 84 MB, one-off
 Everything works without it — Thorough mode simply falls back to the face detector
 alone, which is why it is not in the repository.
 
-Load the extension:
-
-- **Chrome** — `chrome://extensions` → Developer mode → *Load unpacked* → select `dist/`
-- **Firefox** — `npm run build -- --firefox`, then `about:debugging` → *This Firefox* →
-  *Load Temporary Add-on* → select `dist/manifest.json`
-
-Then open <http://127.0.0.1:8788/application.html>, click the Cordon icon, and try:
+Now open <http://127.0.0.1:8788/application.html>, click the Cordon icon, and try:
 
 | Task | What it demonstrates |
 |---|---|
