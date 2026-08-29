@@ -140,6 +140,14 @@ export interface SafeElement {
   wants?: string;
   /** Set when the value was dropped outright — no handle, no value. */
   sensitive?: boolean;
+  /**
+   * The field is blank and the device has nothing to offer it — years of
+   * experience, notice period, a free-text answer. Stated explicitly so the
+   * planner can ask the user instead of inferring emptiness from the absence
+   * of other flags. It discloses only that a box is empty, which is already
+   * apparent in any screenshot.
+   */
+  empty?: boolean;
   /** Non-sensitive visible text, kept verbatim. */
   text?: string;
 }
@@ -298,7 +306,7 @@ export type PanelMessage =
   | { kind: "run"; task: string; mode: Mode }
   | { kind: "stop" }
   | { kind: "getState" }
-  | { kind: "confirm"; approve: boolean }
+  | { kind: "confirm"; approve: boolean; value?: string }
   | { kind: "setServer"; url: string }
   | { kind: "getProfile" }
   | { kind: "setProfile"; values: Record<string, string> }
@@ -328,13 +336,39 @@ export interface ResourceSample {
   frameSkipped?: number;
 }
 
+/**
+ * A question the run is blocked on. Two shapes share one panel:
+ *
+ *  - "action"   — policy wants a human to approve something before it happens.
+ *                 When it is a fill, the value is shown and can be corrected,
+ *                 because approving a value you cannot see or change is not
+ *                 meaningful consent.
+ *  - "question" — the planner reached a field no stored data can answer
+ *                 (years of experience, why you want the role) and is asking
+ *                 the user to supply it. The typed answer is filled straight
+ *                 into that field.
+ */
+export interface PendingPrompt {
+  kind: "action" | "question";
+  action: AgentAction;
+  why: string;
+  /** The element the answer belongs in, when there is one. */
+  target?: string;
+  /** Pre-filled into the editable box. Never a secret. */
+  suggestion?: string;
+  /** Whether to render a text box at all. */
+  editable?: boolean;
+  /** Shown under the box, e.g. "Years of experience". */
+  fieldLabel?: string;
+}
+
 export interface AgentState {
   running: boolean;
   task: string;
   mode: Mode;
   serverUrl: string;
   steps: StepLog[];
-  awaitingConfirm: null | { action: AgentAction; why: string };
+  awaitingConfirm: null | PendingPrompt;
   answer?: string;
   error?: string;
   /** Most recent resource reading, refreshed every step. */

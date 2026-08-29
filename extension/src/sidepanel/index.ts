@@ -65,8 +65,23 @@ taskEl.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runEl.click();
 });
 
-$("approve").addEventListener("click", () => chrome.runtime.sendMessage({ kind: "confirm", approve: true }));
-$("decline").addEventListener("click", () => chrome.runtime.sendMessage({ kind: "confirm", approve: false }));
+const cvalue = $<HTMLInputElement>("cvalue");
+
+function answer(approve: boolean): void {
+  // The typed value goes back with the approval. For an action prompt it is the
+  // corrected value; for a question it is the answer the agent had no way to
+  // know. Empty means "no edit" and the original stands.
+  const v = cvalue.value.trim();
+  chrome.runtime.sendMessage({ kind: "confirm", approve, value: v || undefined });
+  cvalue.value = "";
+}
+
+$("approve").addEventListener("click", () => answer(true));
+$("decline").addEventListener("click", () => answer(false));
+cvalue.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); answer(true); }
+  if (e.key === "Escape") answer(false);
+});
 
 serverEl.addEventListener("change", () => {
   chrome.runtime.sendMessage({ kind: "setServer", url: serverEl.value.trim() });
@@ -230,8 +245,7 @@ function render(s: AgentState): void {
     hintEl.textContent = HINTS[mode];
   }
 
-  confirmEl.hidden = !s.awaitingConfirm;
-  if (s.awaitingConfirm) confirmWhy.textContent = s.awaitingConfirm.why;
+  drawPrompt(s.awaitingConfirm);
 
   if (s.error) {
     bannerEl.hidden = false;
@@ -297,6 +311,39 @@ function render(s: AgentState): void {
  *  - "frame skipped" is the share of the frame the DOM already explained, which
  *    is the actual saving the coverage map buys us.
  */
+/**
+ * The blocked-on-a-human panel. It has two jobs the old version did not do:
+ * it shows WHICH value is about to be used and lets you change it, and it lets
+ * you type an answer for a field no stored data could fill.
+ */
+function drawPrompt(p: AgentState["awaitingConfirm"]): void {
+  const edit = $("cedit") as HTMLDivElement;
+  confirmEl.hidden = !p;
+  if (!p) return;
+
+  const question = p.kind === "question";
+  $("confirmTitle").textContent = question ? "The agent needs your input" : "Confirmation needed";
+  confirmWhy.textContent = p.why;
+
+  edit.hidden = !p.editable;
+  if (p.editable) {
+    $("cvalueLabel").textContent = p.fieldLabel ?? (question ? "Your answer" : "Value");
+    cvalue.value = p.suggestion ?? "";
+    cvalue.placeholder = question ? "type your answer" : "";
+    $("cvalueHint").textContent = question
+      ? "This is typed straight into the field. It is not sent to the server."
+      : "Edit before approving if this is not what you want entered.";
+    // Focusing here means Enter approves, which is what a hand on the keyboard
+    // expects when a box is the only thing on screen.
+    setTimeout(() => cvalue.focus(), 30);
+  }
+
+  const ap = $("approve") as HTMLButtonElement;
+  const de = $("decline") as HTMLButtonElement;
+  ap.textContent = question ? "Use this" : "Approve";
+  de.textContent = question ? "Skip" : "Decline";
+}
+
 function drawResources(s: AgentState): void {
   const box = $("resBox") as HTMLDetailsElement;
   const r = s.resources;

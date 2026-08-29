@@ -7,6 +7,7 @@
  */
 import type { AgentAction, RawElement } from "@/shared/types";
 import { signature } from "@/perception/dom-graph";
+import { actorAct, actorMoveTo, actorResult } from "./actor";
 
 export interface ExecOutcome {
   ok: boolean;
@@ -92,21 +93,47 @@ export async function execute(action: AgentAction, resolved?: string, expectSig?
       if (!el) return { ok: false, note: "click needs a target" };
       (el as HTMLElement).scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
       await sleep(40);
+
+      // Show the move before making it. The cursor arriving is what tells a
+      // watcher which control the agent chose, and why the page then changed.
+      const label = meta?.name || id || "control";
+      await actorMoveTo(el, "click", label);
+      await actorAct("tap");
+
       (el as HTMLElement).focus?.();
       (el as HTMLElement).click();
       await sleep(160);
+      await actorResult(true, "clicked", label);
       return { ok: true, note: `clicked ${meta?.name || id}`, postSig: nowSig };
     }
 
     case "fill": {
       if (!el) return { ok: false, note: "fill needs a target" };
       if (resolved == null) return { ok: false, note: "fill without a resolved value" };
+
+      // The caption names the FIELD, never the value. The point of the
+      // visualiser is to show the agent working, not to put someone’s Aadhaar
+      // number on a projector.
+      const label = meta?.name || id || "field";
+      (el as HTMLElement).scrollIntoView({ block: "center", behavior: "instant" as ScrollBehavior });
+      await sleep(40);
+      await actorMoveTo(el, "fill", label);
+      await actorAct("type");
+
       const ok = setFieldValue(el, resolved);
-      if (!ok) return { ok: false, note: "element is not a fillable field" };
+      if (!ok) {
+        await actorResult(false, "failed", `${label} is not fillable`);
+        return { ok: false, note: "element is not a fillable field" };
+      }
 
       // Let any framework re-render settle before believing what we read.
       await sleep(90);
       const ingest = checkIngestion(el, resolved);
+      await actorResult(
+        ingest.verified,
+        ingest.verified ? "verified" : "not stored",
+        ingest.verified ? `${label} — read back and matched` : `${label} — ${ingest.reason}`,
+      );
 
       return {
         ok: ingest.verified,
@@ -127,8 +154,12 @@ export async function execute(action: AgentAction, resolved?: string, expectSig?
         (o) => o.value === resolved || o.text.trim().toLowerCase() === resolved.trim().toLowerCase(),
       );
       if (!opt) return { ok: false, note: `no option matching "${resolved}"` };
+      const label = meta?.name || id || "list";
+      await actorMoveTo(el, "select", label);
+      await actorAct("tap");
       sel.value = opt.value;
       sel.dispatchEvent(new Event("change", { bubbles: true }));
+      await actorResult(true, "selected", `${label} → ${opt.text}`);
       return { ok: true, note: `selected ${opt.text}`, postSig: nowSig };
     }
 

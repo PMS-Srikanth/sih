@@ -295,3 +295,15 @@ footer input { font: 500 11px var(--mono); padding: 6px 9px; }
 .tki i { width: 7px; height: 7px; border-radius: 2px; display: block; }
 
 .res .pnote { margin: 7px 0 11px; }
+
+/* Editable prompt. Approving a value you can neither see nor change is not
+   consent, so the box is part of the dialog rather than an afterthought. */
+.cedit { margin: 9px 0 2px; }
+.clabel { display: block; font: 700 9px/1 var(--mono); letter-spacing: .1em;
+  text-transform: uppercase; color: var(--bound); margin-bottom: 5px; }
+.cedit input {
+  width: 100%; background: #1a130a; color: var(--ink);
+  border: 1px solid #4a3517; border-radius: 6px; padding: 8px 10px; font: inherit;
+}
+.cedit input:focus { outline: 2px solid var(--bound); outline-offset: 1px; border-color: transparent; }
+.chint { margin: 6px 0 0; font-size: 10.5px; line-height: 1.45; color: var(--ink3); }

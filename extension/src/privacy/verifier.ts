@@ -17,7 +17,7 @@ const ALLOWED_KEYS = new Set([
   "schema", "task", "mode", "urlClass", "title", "viewport",
   "w", "h", "scrollY", "docH",
   "elements", "id", "role", "tag", "type", "name", "bbox", "visible", "offscreen", "enabled",
-  "parent", "conf", "src", "holds", "wants", "sensitive", "text",
+  "parent", "conf", "src", "holds", "wants", "sensitive", "empty", "text",
   "groups", "kind", "children", "x", "y",
   "regions", "cls", "state",
   "image", "history", "action", "target", "result", "note",

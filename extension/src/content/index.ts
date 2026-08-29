@@ -9,6 +9,7 @@ import type { ContentRequest, Finding, RawElement } from "@/shared/types";
 import { buildScreenGraph } from "@/perception/dom-graph";
 import { execute, registerGraph } from "./executor";
 import { clearOverlay, drawGraph, drawRedactions, highlight, type Fillable } from "./overlay";
+import { hideActor } from "./actor";
 
 let nodes = new Map<string, Element>();
 let lastElements: RawElement[] = [];
@@ -58,6 +59,9 @@ chrome.runtime.onMessage.addListener((msg: ContentRequest | OverlayRequest, _s, 
 
         case "clearHighlight":
           clearOverlay();
+          // The run is over; take the cursor and its caption off the page too,
+          // otherwise the last action stays frozen on screen.
+          hideActor();
           send({ ok: true });
           return;
 

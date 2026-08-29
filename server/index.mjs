@@ -95,6 +95,21 @@ function plan(ctx) {
     };
   }
 
+  // 3.5 · A blank field the device cannot serve — years of experience, notice
+  //       period, why you want the role. None of that is identity data sitting
+  //       in a vault, and the server must not invent it: an agent that makes up
+  //       an employment history is worse than one that stops. So ask, and the
+  //       client fills the answer in locally. Asked at most once per field.
+  const unanswerable = fields.find((e) => e.empty && !asked.has(e.id));
+  if (unanswerable && wantsFill(task)) {
+    const name = unanswerable.name ?? unanswerable.id;
+    return {
+      type: "ask_user",
+      target: unanswerable.id,
+      question: `"${name}" is blank and nothing on your device answers it. What should go here?`,
+    };
+  }
+
   // 4 · Otherwise pick the button whose name best matches the task.
   const scored = buttons
     .map((e) => ({ e, s: score(task, e.name ?? "") }))

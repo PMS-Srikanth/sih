@@ -5,7 +5,7 @@
  */
 import type {
   AgentAction, AgentState, ContentResponse, HistoryEntry, Mode, PanelMessage,
-  EnteredValue, PrivacyReceipt, RawScreenGraph, ServerResponse, StageTimings, StepLog,
+  EnteredValue, PrivacyReceipt, RawElement, RawScreenGraph, ServerResponse, StageTimings, StepLog,
 } from "@/shared/types";
 import { detectDom } from "@/privacy/detectors/dom";
 import { detectRegex } from "@/privacy/detectors/regex";
@@ -41,8 +41,11 @@ let tabId: number | null = null;
 let windowId: number | null = null;
 /** Set when the server replies need_image; the next payload carries one frame. */
 let needImage = false;
-let confirmResolver: ((ok: boolean) => void) | null = null;
+interface ConfirmAnswer { approved: boolean; value?: string }
+let confirmResolver: ((a: ConfirmAnswer) => void) | null = null;
 let stopRequested = false;
+/** The most recent graph’s elements, so a prompt can name the field it is about. */
+let lastElements: RawElement[] = [];
 
 /** Stop after this many consecutive steps that leave the page unchanged. */
 const NO_PROGRESS_LIMIT = 2;
@@ -104,14 +107,14 @@ chrome.runtime.onMessage.addListener((msg: PanelMessage, _sender, respond) => {
         // alone left awaitingConfirm set and never pushed, so the panel kept
         // showing a question about a run that no longer exists — with no way
         // out except reloading the extension.
-        confirmResolver?.(false);
+        confirmResolver?.({ approved: false });
         confirmResolver = null;
         state.awaitingConfirm = null;
         push();
         respond(state);
         return;
       case "confirm":
-        confirmResolver?.(msg.approve);
+        confirmResolver?.({ approved: msg.approve, value: msg.value });
         confirmResolver = null;
         state.awaitingConfirm = null;
         push();
@@ -159,6 +162,7 @@ async function runTask(task: string, mode: Mode): Promise<void> {
     const mark = performance.now();
     const graph = await perceive(mode);
     if (!graph) return fail("could not read the page — try reloading the tab");
+    lastElements = graph.elements;
     t.capture = round(performance.now() - mark);
     t.perceive = graph.perceiveMs;
 
@@ -414,10 +418,29 @@ async function runTask(task: string, mode: Mode): Promise<void> {
     }
 
     if (verdict.confirm) {
-      state.awaitingConfirm = { action, why: verdict.confirm };
+      // Show what is actually about to be typed, so approving means something.
+      // A handle is resolved for display only when it is not a secret: the
+      // whole point of the vault is that a password never reaches a UI.
+      const editable = action.kind === "fill" || action.kind === "select";
+      const shown = editable ? previewValue(action.value, vault) : undefined;
+      state.awaitingConfirm = {
+        kind: "action",
+        action,
+        why: verdict.confirm,
+        target: action.target,
+        editable: editable && shown !== null,
+        suggestion: shown ?? undefined,
+        fieldLabel: labelOf(action.target, graph.elements),
+      };
       push();
-      const approved = await waitForConfirm();
+      const { approved, value: edited } = await waitForConfirm();
       state.awaitingConfirm = null;
+
+      // An edit replaces the handle with a literal the user typed themselves.
+      if (approved && edited && edited !== shown) {
+        action = { ...action, value: edited };
+        history.push({ action: action.kind, target: action.target, result: "ok", note: "value edited by user" });
+      }
       if (!approved) {
         history.push({ action: action.kind, target: action.target, result: "blocked", note: "declined by user" });
         log({ step, route: routeKind, thought, action, result: "blocked", note: "declined by user", timings: done(t, t0), receipt });
@@ -491,10 +514,20 @@ async function handleResponse(
       return { stop: true, action: null, thought: "", route: "server" };
 
     case "ask_user": {
-      state.awaitingConfirm = { action: { kind: "wait" }, why: res.question };
+      // The planner reached a field no stored data can answer — years of
+      // experience, notice period, why you want the role. Rather than guessing
+      // or giving up, it asks, and what the user types is filled straight in.
+      state.awaitingConfirm = {
+        kind: "question",
+        action: { kind: "wait" },
+        why: res.question,
+        target: res.target,
+        editable: !!res.target,
+        fieldLabel: res.target ? labelOf(res.target, lastElements) : undefined,
+      };
       log({ step, route: "ask_user", result: "pending", note: res.question, timings: done(t, t0), receipt });
       push();
-      const answered = await waitForConfirm();
+      const { approved: answered, value: typed } = await waitForConfirm();
 
       // Record the answer. Without this the page is unchanged next step, the
       // planner sees the same unfilled field and asks the identical question
@@ -503,11 +536,23 @@ async function handleResponse(
         action: "ask_user",
         target: res.target,
         result: answered ? "ok" : "blocked",
-        note: answered ? "user acknowledged" : "user declined",
+        note: answered ? (typed ? "user supplied a value" : "user acknowledged") : "user declined",
       });
 
       state.awaitingConfirm = null;
       push();
+
+      // A typed answer becomes a literal fill. It came from the user, on this
+      // device, and it is never sent to the server — the server only learns
+      // that the field is no longer empty.
+      if (answered && typed && res.target) {
+        return {
+          stop: false,
+          action: { kind: "fill", target: res.target, value: typed },
+          thought: "using the answer you supplied",
+          route: "ask_user",
+        };
+      }
       return { stop: !answered, action: null, thought: "", route: "ask_user" };
     }
 
@@ -546,14 +591,38 @@ async function perceive(mode: Mode): Promise<RawScreenGraph | null> {
   }
 }
 
-function waitForConfirm(): Promise<boolean> {
+function waitForConfirm(): Promise<ConfirmAnswer> {
   // Settle any prior wait before replacing it. Overwriting the resolver outright
   // would strand the earlier promise, and the step awaiting it would never
   // resume — a hang with the run still marked active and Stop the only exit.
-  confirmResolver?.(false);
+  confirmResolver?.({ approved: false });
   return new Promise((resolve) => {
     confirmResolver = resolve;
   });
+}
+
+/** The human label for an element id, for the prompt panel. */
+function labelOf(id: string | undefined, elements: RawElement[]): string | undefined {
+  if (!id) return undefined;
+  const e = elements.find((x) => x.id === id);
+  return e?.label || e?.name || e?.placeholder || undefined;
+}
+
+/**
+ * What to show in the editable box before an action is approved.
+ *
+ * Returns null when the value must NOT be displayed. A password or an OTP is
+ * exactly the thing the vault exists to keep out of every UI, so those are
+ * confirmed blind — you approve that a secret is used, without it being put on
+ * screen where a projector or a shoulder can catch it.
+ */
+function previewValue(value: string | undefined, v: Vault): string | null {
+  if (!value) return null;
+  if (!isHandle(value)) return value; // already a literal the server composed
+  const entry = v.get(value.trim());
+  if (!entry) return null;
+  if (entry.cls === "password" || entry.cls === "otp" || entry.cls === "apikey") return null;
+  return entry.value;
 }
 
 function log(entry: StepLog): void {

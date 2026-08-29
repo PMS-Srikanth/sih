@@ -34,8 +34,17 @@
     </section>
 
     <section id="confirm" class="confirm" hidden>
-      <p class="ctitle">Confirmation needed</p>
+      <p class="ctitle" id="confirmTitle">Confirmation needed</p>
       <p class="cwhy" id="confirmWhy"></p>
+
+      <!-- Approving a value you can neither see nor change is not consent, so
+           the value is editable here before it is used. -->
+      <div class="cedit" id="cedit" hidden>
+        <label class="clabel" for="cvalue" id="cvalueLabel">Value</label>
+        <input id="cvalue" type="text" spellcheck="false" autocomplete="off" />
+        <p class="chint" id="cvalueHint"></p>
+      </div>
+
       <div class="row">
         <button id="approve" class="primary" type="button">Approve</button>
         <button id="decline" type="button">Decline</button>

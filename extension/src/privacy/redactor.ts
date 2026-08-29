@@ -127,12 +127,14 @@ export function redact({ graph, findings, vault, task, mode, history, image, pro
       // A non-sensitive value the agent may legitimately need to see.
       safe.holds = el.value.slice(0, 120);
       stats.kept++;
-    } else if (profile && !el.value && /^(input|textarea)$/.test(el.tag)) {
-      // Empty field the user's profile can fill. Mint the handle now so the
-      // server can reference it — the value stays on the device.
+    } else if (!el.value && /^(input|textarea|select)$/.test(el.tag)) {
+      // Empty field. If the profile can serve it, mint the handle now so the
+      // server can reference it — the value stays on the device. If it cannot,
+      // say so plainly, so the planner asks the user rather than guessing.
       const cls = wantedClass.get(el.id);
-      const slot = cls ? slotFor(profile, cls) : null;
+      const slot = profile && cls ? slotFor(profile, cls) : null;
       if (slot) safe.wants = vault.mint(slot.entry.value, cls!, el.id);
+      else safe.empty = true;
     }
 
     // ── the element's visible text ─────────────────────────────────────────
