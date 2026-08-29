@@ -223,3 +223,21 @@ unidentifiability, which is the word the problem statement uses, not invisibilit
 - [x] Headless P/R harness
 - [ ] **Phase 2** — screenshot capture, coverage map, ONNX Runtime Web, face/ID detector,
       canvas bbox masking, verifier V3
+
+
+## The open-weights path
+
+```bash
+npm run vlm-check
+```
+
+Stands up a mock OpenAI-compatible endpoint and drives the real server against it:
+request shape, the redaction grammar in the system prompt, JSON extraction from a
+fenced reply, and the fallback to the rule planner when the model is down.
+
+To use a real model instead:
+
+```bash
+ollama pull qwen2.5:7b
+CORDON_VLM_URL=http://127.0.0.1:11434/v1/chat/completions npm run server
+```

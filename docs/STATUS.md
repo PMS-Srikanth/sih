@@ -23,7 +23,7 @@ Aspirations live in the roadmap, not in the status column.
 | Only **anonymized, unidentifiable** data transmitted | ✅ | V1–V6; payload inspector shows the literal bytes |
 | Server **aware of the redaction scheme** | ✅ | `cordon/redaction@1` handle grammar in the system prompt |
 | Server returns **data or a UI action** | ✅ | 4 response types: action / plan / data / ask_user |
-| Server model: **offline-deployable open-weights** | ⚠️ | `server/vlm.mjs` speaks the OpenAI-compatible API (vLLM / Ollama / llama.cpp). Falls back to rules when unset. **Not yet demoed against a running model** |
+| Server model: **offline-deployable open-weights** | ⚠️ | `server/vlm.mjs` speaks the OpenAI-compatible API (vLLM / Ollama / llama.cpp). `npm run vlm-check` proves the path end to end against a mock endpoint, 24/24. **Not yet run against a real model** |
 | **End-to-end task** demonstrated | ⚠️ | Works on demo pages; not yet on a real third-party site |
 | Balance **latency vs accuracy** | ✅ | Fast / Balanced / Thorough change real behaviour |
 
@@ -97,8 +97,9 @@ full pipeline; that is the premise, not a limitation to work around.
 - ✅ Speaks `cordon/redaction@1`, handles only
 - ✅ Output guard rejects literal PII
 - ✅ 4 response types
-- ⚠️ Open-weights VLM — `vlm.mjs` implemented against the OpenAI-compatible API; set
-  `CORDON_VLM_URL` to point at Ollama or vLLM. Never demoed against a live model
+- ⚠️ Open-weights VLM — `vlm.mjs` against the OpenAI-compatible API; set `CORDON_VLM_URL`
+  to point at Ollama or vLLM. `npm run vlm-check` verifies the whole path against a mock
+  endpoint (24/24). Never run against a live model
 - ✅ Asks the user about blank fields nothing can fill, at most once per field
 - ❌ Guided JSON decoding
 
@@ -124,6 +125,7 @@ full pipeline; that is the premise, not a limitation to work around.
 |---|---|
 | `npm run eval` | PII P/R, checksums, redaction, verifier, coverage map, encryption, router, visual PII |
 | `npm run model-check` | ONNX model loads, output shapes match post-processing |
+| `npm run vlm-check` | The open-weights path end to end — request shape, prompt, parsing, dispatch, guard, fallback |
 | `npm run typecheck` | Whole codebase |
 
 Current: **all green.**
