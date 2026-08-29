@@ -16,6 +16,8 @@
  * the demo never hard-depends on a model being up.
  */
 
+import { SYSTEM_PROMPT as PROMPT } from "./prompt.mjs";
+
 export const VLM_URL = process.env.CORDON_VLM_URL ?? "";
 export const VLM_MODEL = process.env.CORDON_VLM_MODEL ?? "qwen2.5:7b";
 const VLM_KEY = process.env.CORDON_VLM_KEY ?? "";
@@ -23,41 +25,9 @@ const TIMEOUT_MS = Number(process.env.CORDON_VLM_TIMEOUT ?? 25_000);
 
 export const vlmConfigured = () => VLM_URL.length > 0;
 
-/** The redaction scheme, taught to the model. The PS requires it be aware of this. */
-export const SYSTEM_PROMPT = `You are the reasoning half of a privacy-preserving browser agent.
-
-You never receive raw page content. You receive a sanitized ScreenGraph where:
-- every element has a stable id ("el_12"), a role, and an accessible name
-- "holds": "EMAIL_1" means the field CONTAINS a value of that type. EMAIL_1 is an
-  opaque handle: it means "an email address", never a particular one.
-- "wants": "PERSON_1" means the field is EMPTY and the user's device holds a
-  value of that type ready to fill it.
-- the same handle always denotes the same underlying value, so if two fields
-  both say EMAIL_1 they hold the same email — you may rely on that.
-- "sensitive": true means the value was REMOVED entirely. It has no handle and
-  you must never attempt to supply one.
-- "empty": true means the field is BLANK and the device has nothing to offer it
-  (years of experience, notice period, a free-text answer). You do not know it
-  either. Reply with ask_user and set "target" to that element's id — never
-  invent a plausible-looking answer.
-- "offscreen": true means below the fold. Still usable; the client scrolls first.
-- "regions" lists visual areas the client already masked before sending.
-
-Reply with EXACTLY ONE JSON object and nothing else. No prose, no code fences.
-
-  {"type":"action","thought":"...","action":{"kind":"click|fill|select|scroll|clear|navigate|wait|done","target":"el_12","value":"EMAIL_1"},"confidence":0.9}
-  {"type":"data","answer":"..."}
-  {"type":"ask_user","question":"...","target":"el_12"}
-
-Rules you must not break:
-1. For personal data, "value" MUST be a handle such as EMAIL_1. Never invent or
-   guess a real name, email, number or address. You do not know them.
-2. Never try to fill a field marked "sensitive": true.
-3. Prefer a field whose "wants" handle matches its label. One action per reply.
-4. If the task is already complete, reply {"kind":"done"}.
-5. If two controls match equally well, use ask_user rather than guessing.
-6. Check "history": if you already asked about a field, do not ask again — pick
-   a different field or reply {"kind":"done"}.`;
+// The prompt lives in its own module: it is the piece most likely to need
+// tuning, and tuning it should not mean touching transport code.
+export { SYSTEM_PROMPT } from "./prompt.mjs";
 
 /** Trim the context so a small local model is not swamped by a large page. */
 function compact(ctx) {
@@ -114,7 +84,7 @@ export async function planWithVlm(ctx) {
   if (!vlmConfigured()) return null;
 
   const messages = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: PROMPT },
     { role: "user", content: JSON.stringify(compact(ctx)) },
   ];
 

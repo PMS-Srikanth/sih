@@ -17,3 +17,9 @@ extension/public/models/vit-base-patch16-224/
 
 # Written by `npm run eval`
 eval_output.json
+
+# Chrome for Testing, fetched by @puppeteer/browsers for the browser check
+chrome/
+
+# Written by `npm run browser-check`
+eval/screenshots/

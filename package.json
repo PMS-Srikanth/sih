@@ -13,12 +13,15 @@
     "eval": "esbuild eval/smoke.ts --bundle --platform=node --format=esm --alias:@=./extension/src --outfile=dist/smoke.mjs --log-level=error && node dist/smoke.mjs",
     "model-check": "node eval/model-check.mjs",
     "fetch-models": "node scripts/fetch-models.mjs",
-    "vlm-check": "node eval/vlm-check.mjs"
+    "vlm-check": "node eval/vlm-check.mjs",
+    "browser-check": "node eval/browser-check.mjs",
+    "live-model": "node eval/live-model-check.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",
     "@types/node": "^26.4.0",
     "esbuild": "^0.24.2",
+    "puppeteer-core": "^25.9.0",
     "typescript": "^5.7.2"
   },
   "dependencies": {
