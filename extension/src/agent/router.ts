@@ -46,13 +46,18 @@ export function route(graph: RawScreenGraph, task: string, stepsTaken: number): 
     };
   }
 
-  if (stepsTaken === 0 && CLEAR_VERBS.test(task) && !CLICK_VERBS.test(task)) {
-    return {
-      route: "local",
-      action: { kind: "clear" },
-      why: "task is a bare clear instruction",
-      confidence: 0.99,
-    };
+  if (CLEAR_VERBS.test(task) && !CLICK_VERBS.test(task)) {
+    // Clearing a form is one action, and once it has happened the task is over.
+    // Without this the run carried on past a successful clear and escalated to
+    // the server looking for more to do on a page it had just emptied.
+    return stepsTaken === 0
+      ? {
+          route: "local",
+          action: { kind: "clear" },
+          why: "task is a bare clear instruction",
+          confidence: 0.99,
+        }
+      : { route: "done", why: "the form has been cleared — nothing further to do" };
   }
 
   // A compound task — "fill this form and register" — is not a click, even

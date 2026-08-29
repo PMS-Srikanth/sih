@@ -496,6 +496,43 @@ try {
   check('"remove" empties the pre-existing data', leftover.length === 0,
     leftover.length ? `still set: ${leftover.join(", ")}` : "all cleared");
 
+  // The bare word, which is what someone actually types, and every KIND of
+  // field — dropdowns were previously left holding their value while the agent
+  // reported success.
+  await page.evaluate(() => {
+    const set = (id, v) => { const n = document.getElementById(id); if (n) n.value = v; };
+    set("name", "Ada Sharma");
+    set("email", "ada@example.in");
+    set("pannum", "ABCPG1234K");
+    set("about", "Some free text.");
+    const y = document.getElementById("years");
+    if (y && y.options.length > 1) y.selectedIndex = 1;
+    const n2 = document.getElementById("notice");
+    if (n2 && n2.options.length > 1) n2.selectedIndex = 1;
+  });
+
+  await panel.evaluate(() =>
+    chrome.runtime.sendMessage({ kind: "run", task: "remove", mode: "balanced" }),
+  );
+  let bare = null;
+  for (let i = 0; i < 50; i++) {
+    bare = await panel.evaluate(() => chrome.runtime.sendMessage({ kind: "getState" }));
+    if (bare && !bare.running) break;
+    await sleep(250);
+  }
+
+  const routes2 = (bare?.steps ?? []).map((x) => x.route);
+  check('the bare word "remove" resolves on device, with no server call',
+    routes2.includes("local") && !routes2.includes("server"), routes2.join(" → "));
+
+  const after = await page.evaluate(() =>
+    ["name", "email", "pannum", "about", "years", "notice"]
+      .map((id) => [id, document.getElementById(id)?.value ?? ""])
+      .filter(([, v]) => v !== ""),
+  );
+  check('"remove" clears text fields AND dropdowns', after.length === 0,
+    after.length ? after.map(([k, v]) => `${k}=${v}`).join(", ") : "every field empty");
+
 
   // ── the demo forms accept valid input ────────────────────────────────────
   for (const [file, emailId, submitId, fill] of [

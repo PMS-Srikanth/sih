@@ -180,21 +180,77 @@ async function run(action: AgentAction, resolved?: string, expectSig?: string): 
     }
 
     case "clear": {
-      const targets = el ? [el] : Array.from(document.querySelectorAll("input:not([type='hidden']), textarea"));
+      // "Remove my data from this form" has to mean all of it. The previous
+      // selector took inputs and textareas only, so dropdowns, checkboxes and
+      // radios kept their values and the form still held personal data after
+      // the agent reported success.
+      const targets = el
+        ? [el]
+        : Array.from(
+            document.querySelectorAll<HTMLElement>(
+              "input:not([type='hidden']):not([type='submit']):not([type='button'])" +
+                ":not([type='reset']):not([type='image'])," +
+                "textarea, select",
+            ),
+          );
+
       let cleared = 0;
       let failed = 0;
+      let skipped = 0;
+
       for (const t of targets) {
+        const tag = t.tagName.toLowerCase();
+        const type = (t as HTMLInputElement).type;
+
+        // A disabled or read-only field is not ours to change, and counting it
+        // as a failure would report a problem that does not exist.
+        if ((t as HTMLInputElement).disabled || (t as HTMLInputElement).readOnly) {
+          skipped++;
+          continue;
+        }
+
+        if (type === "checkbox" || type === "radio") {
+          const box = t as HTMLInputElement;
+          if (box.checked) {
+            box.checked = false;
+            box.dispatchEvent(new Event("input", { bubbles: true }));
+            box.dispatchEvent(new Event("change", { bubbles: true }));
+            cleared++;
+          }
+          continue;
+        }
+
+        if (tag === "select") {
+          const sel = t as HTMLSelectElement;
+          if (!sel.value) continue; // already on its placeholder
+          // Prefer an explicit empty-valued option; otherwise the first one,
+          // which is the conventional "Select…" placeholder.
+          const blank = Array.from(sel.options).find((o) => o.value === "");
+          sel.selectedIndex = blank ? blank.index : 0;
+          sel.dispatchEvent(new Event("input", { bubbles: true }));
+          sel.dispatchEvent(new Event("change", { bubbles: true }));
+          cleared++;
+          continue;
+        }
+
+        if (!(t as HTMLInputElement).value) continue; // nothing to remove
         if (setFieldValue(t, "")) {
           const ingest = checkIngestion(t, "");
           if (ingest.verified) cleared++;
           else failed++;
+        } else {
+          failed++;
         }
       }
-      return { 
-        ok: failed === 0, 
-        note: `cleared ${cleared} fields${failed ? `, ${failed} failed` : ""}`, 
-        postSig: nowSig 
-      };
+
+      const note =
+        cleared === 0 && failed === 0
+          ? "nothing to clear — every field was already empty"
+          : `cleared ${cleared} field${cleared === 1 ? "" : "s"}` +
+            (failed ? `, ${failed} would not clear` : "") +
+            (skipped ? `, ${skipped} read-only` : "");
+
+      return { ok: failed === 0, note, postSig: nowSig };
     }
 
     default:

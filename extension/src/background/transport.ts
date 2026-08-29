@@ -39,7 +39,14 @@ export async function send(serverUrl: string, payload: string): Promise<Exchange
     return { response: validate(json), raw: pretty(text), ms: at() };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { response: { type: "error", message: `cannot reach ${serverUrl} — ${msg}` }, raw: "", ms: at() };
+    // "Failed to fetch" is what the browser says and it explains nothing. The
+    // overwhelmingly common cause is that the server was never started, so say
+    // that and give the command rather than repeating the browser's phrasing.
+    const unreachable = /failed to fetch|networkerror|load failed/i.test(msg);
+    const message = unreachable
+      ? `The server at ${serverUrl} is not answering. Start it with "npm start" in the project folder, then run this again.`
+      : `cannot reach ${serverUrl} — ${msg}`;
+    return { response: { type: "error", message }, raw: "", ms: at() };
   } finally {
     clearTimeout(timer);
   }

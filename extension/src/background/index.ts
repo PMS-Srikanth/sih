@@ -198,6 +198,23 @@ async function runTask(task: string, mode: Mode): Promise<void> {
     let receipt: PrivacyReceipt | undefined;
     let routeKind: StepLog["route"] = "local";
 
+    if (decision.route === "done") {
+      // The router has concluded the task is finished. This branch was missing,
+      // so "done" fell through to the server branch and the agent escalated a
+      // page it had just finished working on — which is how a bare "remove"
+      // ended up making network calls after successfully clearing the form.
+      log({
+        step,
+        route: "done",
+        result: "ok",
+        note: decision.why,
+        timings: done(t, t0),
+      });
+      state.running = false;
+      push();
+      return;
+    }
+
     if (decision.route === "local") {
       action = decision.action;
       thought = `resolved on device — ${decision.why}`;
