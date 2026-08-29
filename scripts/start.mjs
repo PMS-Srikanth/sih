@@ -56,6 +56,20 @@ if (!existsSync(path.join(DIST, "manifest.json"))) {
   process.exit(1);
 }
 
+// Numbers shown during a demo should belong to the code being demoed. The
+// evaluation takes about a second, so it runs now rather than whenever someone
+// last remembered to — and the report is rebuilt from it.
+try {
+  const { execFileSync } = await import("node:child_process");
+  execFileSync("npm", ["run", "eval"], { stdio: "ignore", shell: true });
+  execFileSync("npm", ["run", "report"], { stdio: "ignore", shell: true });
+  console.log(`  ${G}ok${X}    evaluation re-run; report rebuilt from it`);
+} catch {
+  // Not fatal: the demo pages and the agent work regardless, and the report
+  // page tells you what to run if it is missing.
+  console.log(`  ${Y}note${X}  could not refresh the evaluation report — run npm run eval`);
+}
+
 const children = [];
 
 async function bring(name, colour, args, port, healthUrl, marker, env = {}) {
