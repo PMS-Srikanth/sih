@@ -74,6 +74,55 @@ The side panel carries four things worth showing:
 
 ---
 
+## Live demo — a run order that works
+
+Three terminals, then load `dist/` unpacked. Check the build stamp in the panel
+header matches what `npm run build` printed; if it does not, hit reload on the
+extension card.
+
+**1 · The agent is real, and it is visible.**
+Open `job-form.html` — every field is blank. Unlock your profile in *My data*,
+then run `Fill this form from my profile`. A cursor travels to each field, a ring
+closes on it, and a caption says what it is doing. The captions name the *field*,
+never the value.
+
+**2 · It stops when it does not know.**
+The same run reaches **Years of experience**. Nothing in an identity vault answers
+that, so it asks instead of inventing an employment history. Type an answer — it
+is filled in locally and never sent. This is the honest half of the pitch.
+
+**3 · The value is yours to change.**
+Run `Submit application` on `application.html`. The confirmation shows the value
+and lets you edit it before approving. Passwords and OTPs are confirmed blind on
+purpose — those never reach a screen.
+
+**4 · Both views are true.**
+Switch *Your view* / *Server's view* in the panel. Same page: yours with your data
+in it, the server's with it already gone.
+
+**5 · Show the traffic.**
+Open **Network traffic**. Every request, both bodies, both sizes, the round trip.
+Then run `Click "Save draft"` — it resolves on device and the list stays empty.
+That is the strongest version of the claim.
+
+**6 · Show the cost.**
+Open **Resources**: which processor ran the model, model memory, how much of the
+frame the DOM already explained so nothing had to look at it, and where the time
+went. The animation time is listed separately and excluded from every figure.
+
+**7 · Prove it without the browser.**
+
+```bash
+npm run eval        # PII precision/recall, redaction, verifier, router
+npm run vlm-check   # the open-weights server path, end to end
+npm run model-check # the ONNX model loads and its shapes match
+```
+
+**If the server is down**, the demo still runs — the planner falls back to rules,
+and `vlm-check` proves that fallback. Say so rather than hiding it.
+
+---
+
 ## Prove the engine without a browser
 
 ```bash
