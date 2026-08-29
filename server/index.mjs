@@ -174,10 +174,14 @@ function answer(ctx, task) {
     return {
       type: "data",
       answer:
-        `I can see ${els.length} elements. ${handles.length} carry handles` +
+        `I can see ${els.length} element${els.length === 1 ? "" : "s"}. ` +
+        `${handles.length} carr${handles.length === 1 ? "ies" : "y"} a handle` +
         (kinds.length ? ` (${kinds.join(", ")})` : "") +
-        `, ${secrets.length} were removed entirely, and ${masked.length} visual region(s) arrived already masked. ` +
-        `I know the types, not the values.`,
+        `, ${secrets.length} ${secrets.length === 1 ? "was" : "were"} removed entirely` +
+        (masked.length
+          ? `, and ${masked.length} visual region${masked.length === 1 ? "" : "s"} arrived already masked`
+          : ", and no visual regions needed masking") +
+        `. I know the types, not the values.`,
       cite: handles.slice(0, 5).map((e) => e.id),
     };
   }

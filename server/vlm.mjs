@@ -9,7 +9,8 @@
  *
  *   CORDON_VLM_URL     http://127.0.0.1:11434/v1/chat/completions   (Ollama)
  *                      http://127.0.0.1:8000/v1/chat/completions    (vLLM)
- *   CORDON_VLM_MODEL   qwen2.5vl:7b  |  llama3.2-vision:11b  |  qwen2.5:7b
+ *   CORDON_VLM_MODEL   qwen2.5:3b (verified)  |  qwen2.5:7b  |  qwen2.5vl:7b
+ *                      |  llama3.2-vision:11b
  *   CORDON_VLM_KEY     only if the endpoint wants one
  *
  * Unset any of these and the server falls back to the rule-based planner, so
@@ -19,7 +20,10 @@
 import { SYSTEM_PROMPT as PROMPT } from "./prompt.mjs";
 
 export const VLM_URL = process.env.CORDON_VLM_URL ?? "";
-export const VLM_MODEL = process.env.CORDON_VLM_MODEL ?? "qwen2.5:7b";
+// Defaults to the model this repo has actually been verified against, not the
+// largest one it could plausibly use. A default naming a model nobody has
+// pulled fails at the worst moment — the first time someone tries it.
+export const VLM_MODEL = process.env.CORDON_VLM_MODEL ?? "qwen2.5:3b";
 const VLM_KEY = process.env.CORDON_VLM_KEY ?? "";
 const TIMEOUT_MS = Number(process.env.CORDON_VLM_TIMEOUT ?? 25_000);
 

@@ -289,6 +289,6 @@ fenced reply, and the fallback to the rule planner when the model is down.
 To use a real model instead:
 
 ```bash
-ollama pull qwen2.5:7b
+ollama pull qwen2.5:3b
 CORDON_VLM_URL=http://127.0.0.1:11434/v1/chat/completions npm run server
 ```

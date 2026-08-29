@@ -355,6 +355,69 @@ try {
   check("the step log renders entries", rendered.steps > 0, `${rendered.steps} node(s)`);
   await panel.screenshot({ path: path.join(SHOTS, "05-panel-after-run.png"), fullPage: true });
 
+  // ── a task that must escalate, so the network path runs for real ─────────
+  // Everything above stayed on the device, which is the happy case and proves
+  // nothing about redaction. This one has to leave the machine, so the payload
+  // it builds is the actual artefact the privacy claim is about.
+  await page.bringToFront();
+  await page.evaluate(() => {
+    // Put something worth redacting on the page first.
+    document.getElementById("email").value = "srikar.gautam@gmail.com";
+    document.getElementById("mobile").value = "9876543210";
+    document.getElementById("pw").value = "Hunter2!SuperSecret";
+  });
+
+  await panel.evaluate(() =>
+    chrome.runtime.sendMessage({
+      kind: "run",
+      task: "What sensitive data is on this page?",
+      mode: "balanced",
+    }),
+  );
+
+  let net = null;
+  for (let i = 0; i < 60; i++) {
+    net = await panel.evaluate(() => chrome.runtime.sendMessage({ kind: "getState" }));
+    if (net && !net.running && net.steps?.length) break;
+    await sleep(300);
+  }
+
+  const served = (net?.steps ?? []).find((x) => x.route === "server");
+  check("a task that needs the server actually reaches it", Boolean(served),
+    (net?.steps ?? []).map((x) => x.route).join(" → "));
+
+  if (served?.receipt) {
+    const r = served.receipt;
+    note(`payload ${r.payloadBytes} B, hash #${r.payloadHash}, reply ${r.replyMs ?? "?"} ms`);
+    check("the verifier cleared the payload before it left", r.verifier?.passed === true);
+    check("the payload is captured for inspection", typeof r.payload === "string" && r.payload.length > 0);
+    check("the server's reply is captured too", typeof r.reply === "string" && r.reply.length > 0);
+
+    // The whole thesis, tested at the boundary in a real browser.
+    for (const secret of ["srikar.gautam@gmail.com", "9876543210", "Hunter2!SuperSecret"]) {
+      check(`no "${secret.slice(0, 22)}" in the payload`, !(r.payload ?? "").includes(secret));
+    }
+    check("handles were substituted in its place", /(EMAIL|PHONE|PERSON)_\d+/.test(r.payload ?? ""),
+      (r.payload ?? "").match(/(EMAIL|PHONE|PERSON)_\d+/g)?.slice(0, 4).join(", ") ?? "none found");
+  } else if (served) {
+    check("the server step carries a privacy receipt", false, "no receipt on the server step");
+  }
+
+  // And the panel must actually render that traffic.
+  await panel.reload({ waitUntil: "domcontentloaded" });
+  await sleep(800);
+  const netUi = await panel.evaluate(() => {
+    const box = document.getElementById("netBox");
+    return {
+      hidden: box?.hidden,
+      summary: document.getElementById("nsum")?.textContent ?? "",
+      rows: document.querySelectorAll("#nrows .nrow").length,
+    };
+  });
+  check("the network panel lists the request", netUi.rows > 0,
+    `${netUi.rows} row(s), "${netUi.summary}"`);
+  await panel.screenshot({ path: path.join(SHOTS, "06-network-traffic.png"), fullPage: true });
+
   // ── nothing threw anywhere ───────────────────────────────────────────────
   // Extension pages log benign noise on shutdown; only count real errors.
   const real = pageErrors.filter(
