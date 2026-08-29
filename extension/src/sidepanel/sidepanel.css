@@ -307,3 +307,54 @@ footer input { font: 500 11px var(--mono); padding: 6px 9px; }
 }
 .cedit input:focus { outline: 2px solid var(--bound); outline-offset: 1px; border-color: transparent; }
 .chint { margin: 6px 0 0; font-size: 10.5px; line-height: 1.45; color: var(--ink3); }
+
+/* ── Network traffic ──────────────────────────────────────────────────────
+   The step log answers "what did step 4 send". This answers the question a
+   sceptic actually asks: show me all of it. */
+.net { border-bottom: 1px solid var(--line); }
+.net > summary {
+  padding: 10px 16px; cursor: pointer; display: flex; align-items: center; gap: 8px;
+  list-style: none; user-select: none;
+}
+.net > summary::-webkit-details-marker { display: none; }
+.net > summary::before { content: "\25B8"; color: var(--ink3); font-size: 10px; transition: transform .15s; }
+.net[open] > summary::before { transform: rotate(90deg); }
+.net > summary .lbl { margin: 0; }
+.nsum { margin-left: auto; font: 600 9px/1 var(--mono); color: var(--server);
+  background: #1b1930; padding: 3px 7px; border-radius: 3px; white-space: nowrap; }
+
+.nrows { padding: 0 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+.nempty { margin: 0; padding: 12px; text-align: center; font-size: 11.5px;
+  color: var(--ok); background: #10241a; border-radius: 6px; }
+
+.nrow { background: var(--surf); border: 1px solid var(--line); border-radius: 6px; }
+.nrow > summary {
+  display: flex; align-items: center; gap: 7px; padding: 7px 9px; cursor: pointer;
+  list-style: none; user-select: none; font: 500 10.5px var(--mono);
+}
+.nrow > summary::-webkit-details-marker { display: none; }
+.nstep { color: var(--ink3); min-width: 20px; }
+.nverb { color: var(--server); font-weight: 700; }
+.nurl { color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nmeta { margin-left: auto; color: var(--ink3); white-space: nowrap; }
+.nms { color: var(--bound); white-space: nowrap; min-width: 44px; text-align: right; }
+
+.nbody { padding: 2px 9px 9px; }
+.nlab { margin: 6px 0 4px; font: 700 8.5px/1 var(--mono); letter-spacing: .09em;
+  text-transform: uppercase; color: var(--ink3); }
+.nbody pre {
+  margin: 0; padding: 8px 9px; background: #0a0e10; border: 1px solid var(--line);
+  border-left: 2px solid var(--server); border-radius: 5px;
+  max-height: 220px; overflow: auto;
+  font: 400 10px/1.45 var(--mono); color: var(--ink2); white-space: pre; tab-size: 2;
+}
+.nbody pre.reply { border-left-color: var(--ok); }
+.nnote { margin: 6px 0 0; font-size: 10px; line-height: 1.45; color: var(--bound); }
+
+/* Page-view switch. Same shape as the mode switch so it reads as a sibling
+   control rather than a new concept. */
+.views { display: flex; margin-top: 9px; }
+.views button { border-radius: 0; flex: 1; padding: 5px 4px; font-size: 11.5px; }
+.views button:first-child { border-radius: 6px 0 0 6px; }
+.views button:last-child { border-radius: 0 6px 6px 0; border-left: none; }
+.views button.on { background: var(--surf); color: var(--bound); border-color: var(--bound); }

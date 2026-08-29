@@ -32,6 +32,9 @@
   .kv b { color:var(--ink2); font-weight:600; display:inline-block; min-width:96px; }
   footer { color:var(--ink2); font-size:12px; text-align:center; padding:0 20px 40px; }
   .pick { color:var(--acc); text-decoration:underline; cursor:pointer; font-style:normal; font-weight:600; }
+  .demobar { display:flex; gap:18px; align-items:center; justify-content:space-between; flex-wrap:wrap;
+    border-style:dashed; background:#fbfcfc; }
+  .demobar .row { margin:0; flex:none; }
   #idPhoto { object-fit:cover; }
 </style>
 </head>
@@ -43,6 +46,21 @@
 </header>
 
 <div class="wrap">
+
+  <div class="card demobar">
+    <div>
+      <h2>Demo controls</h2>
+      <p class="muted" style="margin:0">
+        The fields below start filled with <b>sample data</b> — this page stands in for a
+        site that already holds your details. Clear it to test filling from your own
+        encrypted profile instead.
+      </p>
+    </div>
+    <div class="row">
+      <button type="button" id="clearAll">Clear all fields</button>
+      <button type="button" id="restore">Restore sample data</button>
+    </div>
+  </div>
 
   <!-- Plain prose PII: no form field, so only the pattern detector finds it. -->
   <div class="card">
@@ -337,6 +355,29 @@
       "background:" + (ok ? "#e9f2ec" : "#fdf3f2") + ";color:" + (ok ? "#1f6b45" : "#a32b20");
     b.textContent = text;
   }
+
+  // Captured from the markup at load, so "restore" cannot drift out of step
+  // with what the page actually ships with.
+  const SAMPLE = Object.fromEntries(
+    [...FIELDS, "pw", "otp"].filter(el).map((f) => [f, el(f).value]),
+  );
+
+  el("clearAll").addEventListener("click", () => {
+    for (const f of Object.keys(SAMPLE)) if (el(f)) el(f).value = "";
+    const r = el("receipt");
+    if (r) r.remove();
+    el("submit").disabled = false;
+    el("submit").textContent = "Submit application";
+    el("save").disabled = false;
+    showBanner("save", "All fields cleared. Ask Cordon to fill this from your profile.");
+    say("Cleared.");
+  });
+
+  el("restore").addEventListener("click", () => {
+    for (const [f, v] of Object.entries(SAMPLE)) if (el(f)) el(f).value = v;
+    showBanner("save", "Sample data restored.");
+    say("Sample data restored.");
+  });
 
   el("save").addEventListener("click", saveDraft);
   el("submit").addEventListener("click", submitApplication);

@@ -83,6 +83,31 @@ cvalue.addEventListener("keydown", (e) => {
   if (e.key === "Escape") answer(false);
 });
 
+// ── page view ──────────────────────────────────────────────────────────────
+// Two honest pictures of the same page: yours, with your data in it, and the
+// model's, with everything sensitive already gone.
+
+const VIEW_HINTS: Record<string, string> = {
+  user: "Your view — the page exactly as you see it, with your real data in it.",
+  server: "Server's view — boxes mark what is removed or replaced before anything is sent.",
+};
+
+const viewsEl = $<HTMLDivElement>("views");
+viewsEl.addEventListener("click", async (e) => {
+  const b = (e.target as HTMLElement).closest("button");
+  if (!b) return;
+  const view = b.dataset.view as "user" | "server";
+  for (const x of Array.from(viewsEl.children)) x.classList.toggle("on", x === b);
+  $("viewHint").textContent = VIEW_HINTS[view];
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  if (tab?.id) {
+    // The content script is absent on chrome:// pages and the like; a failed
+    // send there is expected, not an error worth surfacing.
+    chrome.tabs.sendMessage(tab.id, { kind: "setView", view }).catch(() => {});
+  }
+});
+
 serverEl.addEventListener("change", () => {
   chrome.runtime.sendMessage({ kind: "setServer", url: serverEl.value.trim() });
 });
@@ -293,9 +318,88 @@ function render(s: AgentState): void {
     summaryEl.innerHTML += `<div class="warn">⚠️ Vision gracefully degraded (offscreen unavailable)</div>`;
   }
 
+  drawNetwork(s);
   drawResources(s);
   drawEntered(s.steps);
   drawLog(s.steps);
+}
+
+/**
+ * Every request that left the machine, in one list.
+ *
+ * The step log already shows a payload per step, but that answers "what did
+ * step 4 send". This answers the question a sceptic actually asks: show me ALL
+ * the traffic. A run that stays local produces an empty list, which is the
+ * strongest version of the claim.
+ */
+function drawNetwork(s: AgentState): void {
+  const box = $("netBox") as HTMLDetailsElement;
+  const rows = $("nrows");
+  const calls = s.steps.filter((x) => x.receipt?.payload && x.route === "server");
+
+  box.hidden = s.steps.length === 0;
+  rows.textContent = "";
+
+  const out = calls.reduce((n, x) => n + (x.receipt?.payloadBytes ?? 0), 0);
+  const back = calls.reduce((n, x) => n + (x.receipt?.reply?.length ?? 0), 0);
+  $("nsum").textContent = calls.length
+    ? `${calls.length} request${calls.length === 1 ? "" : "s"} · ${fmtBytes(out)} up · ${fmtBytes(back)} down`
+    : "no requests";
+
+  if (!calls.length) {
+    rows.append(el("p", "nempty", "Nothing was sent. The whole task ran on this device."));
+    return;
+  }
+
+  for (const c of calls) {
+    const r = c.receipt!;
+    const row = document.createElement("details");
+    row.className = "nrow";
+
+    const sum = document.createElement("summary");
+    const verb = el("span", "nverb", "POST");
+    const url = el("span", "nurl", shortUrl(s.serverUrl));
+    const meta = el("span", "nmeta", `${fmtBytes(r.payloadBytes)} ▲ ${fmtBytes(r.reply?.length ?? 0)} ▼`);
+    const ms = el("span", "nms", r.replyMs !== undefined ? `${r.replyMs} ms` : "—");
+    sum.append(el("span", "nstep", `#${c.step}`), verb, url, meta, ms);
+    row.append(sum);
+
+    const body = document.createElement("div");
+    body.className = "nbody";
+
+    body.append(el("p", "nlab", "Request — what the server received"));
+    const req = document.createElement("pre");
+    req.textContent = r.payload ?? "";
+    body.append(req);
+
+    if (r.imageBytes) {
+      body.append(el("p", "nnote",
+        `Plus a ${Math.round(r.imageBytes / 1365)} KB frame, with every detected region painted out in the bitmap before it was encoded.`));
+    }
+
+    body.append(el("p", "nlab", "Response — what it sent back"));
+    const rep = document.createElement("pre");
+    rep.className = "reply";
+    rep.textContent = r.reply ?? "(no body)";
+    body.append(rep);
+
+    row.append(body);
+    rows.append(row);
+  }
+}
+
+function shortUrl(u: string): string {
+  try {
+    const x = new URL(u);
+    return x.host + x.pathname;
+  } catch {
+    return u;
+  }
+}
+
+function fmtBytes(n: number): string {
+  if (!n) return "0 B";
+  return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
 }
 
 /**

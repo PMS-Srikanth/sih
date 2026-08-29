@@ -84,6 +84,34 @@ function schedule(): void {
   });
 }
 
+/**
+ * Which view the page is showing.
+ *
+ * "server" paints the redaction boxes — what the model is allowed to see.
+ * "user"   paints nothing, so you can read your own page with your own data
+ *          in it. Both are true at once; the overlay was only ever one of the
+ *          two, which made your own data look permanently blacked out on your
+ *          own screen.
+ */
+let view: "user" | "server" = "server";
+
+export function setView(v: "user" | "server"): void {
+  view = v;
+  if (v === "user") {
+    // Take the boxes down but keep the scene, so switching back repaints
+    // without needing another perceive pass.
+    if (shadow) {
+      for (const n of Array.from(shadow.querySelectorAll(".b,.t,.redact,.fill,.hl"))) n.remove();
+    }
+  } else if (scene) {
+    paint(scene);
+  }
+}
+
+export function currentView(): "user" | "server" {
+  return view;
+}
+
 export function clearOverlay(): void {
   scene = null;
   if (!shadow) return;
@@ -103,6 +131,8 @@ export function drawRedactions(findings: Finding[], fillable: Fillable[], nodes:
 // ── painting ───────────────────────────────────────────────────────────────
 
 function paint(s: Scene): void {
+  // In the user's own view there is nothing to draw.
+  if (view === "user") return;
   const root = ensure();
   for (const n of Array.from(root.querySelectorAll(".b,.t,.redact,.fill"))) n.remove();
 

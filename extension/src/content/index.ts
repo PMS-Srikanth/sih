@@ -8,13 +8,15 @@
 import type { ContentRequest, Finding, RawElement } from "@/shared/types";
 import { buildScreenGraph } from "@/perception/dom-graph";
 import { execute, registerGraph } from "./executor";
-import { clearOverlay, drawGraph, drawRedactions, highlight, type Fillable } from "./overlay";
+import { clearOverlay, drawGraph, drawRedactions, highlight, setView, type Fillable } from "./overlay";
 import { hideActor } from "./actor";
 
 let nodes = new Map<string, Element>();
 let lastElements: RawElement[] = [];
 
-type OverlayRequest = { kind: "showRedactions"; findings: Finding[]; fillable: Fillable[] };
+type OverlayRequest =
+  | { kind: "showRedactions"; findings: Finding[]; fillable: Fillable[] }
+  | { kind: "setView"; view: "user" | "server" };
 
 chrome.runtime.onMessage.addListener((msg: ContentRequest | OverlayRequest, _s, send) => {
   (async () => {
@@ -51,6 +53,11 @@ chrome.runtime.onMessage.addListener((msg: ContentRequest | OverlayRequest, _s, 
           send({ ok: true });
           return;
         }
+
+        case "setView":
+          setView(msg.view);
+          send({ ok: true });
+          return;
 
         case "highlight":
           highlight(msg.ids, nodes);

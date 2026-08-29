@@ -31,6 +31,14 @@
         <button id="run" class="primary" type="button">Run</button>
       </div>
       <p class="hint" id="modeHint">Balanced — DOM graph, calibrated PII detection, vision on unexplained regions.</p>
+
+      <!-- Both views are true at once. The overlay used to be the only one, which
+           made your own data look permanently blacked out on your own screen. -->
+      <div class="views" id="views" role="group" aria-label="Page view">
+        <button data-view="user" type="button">Your view</button>
+        <button data-view="server" class="on" type="button">Server's view</button>
+      </div>
+      <p class="hint" id="viewHint">Server's view — boxes mark what is removed or replaced before anything is sent.</p>
     </section>
 
     <section id="confirm" class="confirm" hidden>
@@ -160,6 +168,18 @@
       <p class="rlab">On device vs. network — whole run</p>
       <div class="sbar" id="sbar"></div>
       <p class="pnote" id="splitNote"></p>
+    </details>
+
+    <details class="net" id="netBox" hidden>
+      <summary>
+        <span class="lbl">Network traffic</span>
+        <span class="nsum" id="nsum"></span>
+      </summary>
+      <p class="pnote">
+        Every request this extension has made. There is exactly one place in the
+        codebase that can reach the network, and this is everything that left it.
+      </p>
+      <div class="nrows" id="nrows"></div>
     </details>
 
     <details class="entered" id="enteredBox" hidden>
