@@ -134,7 +134,7 @@ export function redact({ graph, findings, vault, task, mode, history, image, pro
       const cls = wantedClass.get(el.id);
       const slot = profile && cls ? slotFor(profile, cls) : null;
       if (slot) safe.wants = vault.mint(slot.entry.value, cls!, el.id);
-      else safe.empty = true;
+      else if (worthAsking(el)) safe.empty = true;
     }
 
     // ── the element's visible text ─────────────────────────────────────────
@@ -219,6 +219,22 @@ function applySpans(
 }
 
 /** Values the agent needs and that carry no personal information. */
+/**
+ * Is this blank field worth interrupting the user about?
+ *
+ * "Empty" is not the same as "needs an answer". A search box, a checkbox or a
+ * submit control is blank by nature, and an agent that stops to ask what to put
+ * in the site search has misunderstood the task. Only fields a person would
+ * actually be expected to complete qualify.
+ */
+function worthAsking(el: RawElement): boolean {
+  if (el.role === "password") return false; // handled as sensitive, never asked here
+  if (el.type && /^(search|submit|reset|button|image|file|hidden|checkbox|radio)$/.test(el.type)) return false;
+  // A field with no label, name or placeholder gives the user nothing to answer
+  // against — asking "what goes in el_37?" is not a question anyone can act on.
+  return Boolean(el.label || el.name || el.placeholder);
+}
+
 function isSafeToEcho(el: RawElement): boolean {
   if (el.role === "password") return false;
   if (el.tag === "select") return true;

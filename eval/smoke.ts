@@ -391,6 +391,13 @@ const blank: RawElement[] = [
   field({ name: "Mobile number", label: "Mobile number", type: "tel", autocomplete: "tel" }),
   field({ name: "Aadhaar number", label: "Aadhaar number" }),
   field({ name: "Comments", label: "Comments", tag: "textarea", bbox: { x: 0, y: 400, w: 600, h: 160 } }),
+  // Nothing in an identity vault answers these. The agent must ask rather than
+  // invent an employment history.
+  field({ name: "Years of experience", label: "Years of experience" }),
+  field({ name: "Notice period", label: "Notice period" }),
+  // Blank by nature — asking the user what to type in the site search would be
+  // a misunderstanding of the task, not helpfulness.
+  field({ name: "Search", label: "Search", type: "search" }),
 ];
 const blankGraph: RawScreenGraph = { ...graph, elements: blank, readingOrder: blank.map((e) => e.id) };
 
@@ -406,7 +413,25 @@ const r2 = redact({
 });
 
 for (const e of r2.context.elements) {
-  console.log(`  ${e.id.padEnd(7)} ${(e.name ?? "").slice(0, 22).padEnd(24)} wants: ${e.wants ?? "—"}`);
+  const state = e.wants ? `wants: ${e.wants}` : e.empty ? "empty — ask the user" : "—";
+  console.log(`  ${e.id.padEnd(7)} ${(e.name ?? "").slice(0, 22).padEnd(24)} ${state}`);
+}
+
+// The distinction the planner depends on: a field the device can serve, a field
+// only the user can answer, and a field nobody should be asked about.
+let askFailures = 0;
+const blankField = (n: string) => r2.context.elements.find((e) => e.name === n);
+const askChecks: Array<[string, boolean]> = [
+  ["profile serves Full name", Boolean(blankField("Full name")?.wants)],
+  ["Years of experience is flagged for the user", blankField("Years of experience")?.empty === true],
+  ["Notice period is flagged for the user", blankField("Notice period")?.empty === true],
+  ["a search box is NOT flagged", blankField("Search")?.empty !== true],
+  ["a served field is not also flagged empty", blankField("Full name")?.empty !== true],
+];
+console.log("");
+for (const [label, ok] of askChecks) {
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${label}`);
+  if (!ok) askFailures++;
 }
 
 const payload2 = JSON.stringify(r2.context);
@@ -498,8 +523,11 @@ const evalOutput = {
 
 fs.writeFileSync("eval_output.json", JSON.stringify(evalOutput, null, 2));
 
-if (!ok) {
-  console.log(`  RESULT: needs work — ${fn} miss(es), ${fp} over-redaction(s)\n`);
+if (!ok || askFailures) {
+  const parts = [`${fn} miss(es)`, `${fp} over-redaction(s)`];
+  if (askFailures) parts.push(`${askFailures} ask-the-user misclassification(s)`);
+  console.log(`  RESULT: needs work — ${parts.join(", ")}
+`);
   process.exit(1);
 }
 console.log(`  RESULT: all positives caught, no over-redaction, verifier passed`);
