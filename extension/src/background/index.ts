@@ -100,13 +100,21 @@ chrome.runtime.onMessage.addListener((msg: PanelMessage, _sender, respond) => {
       case "stop":
         stopRequested = true;
         state.running = false;
+        // Stop must also dismiss any open confirmation. Resolving the promise
+        // alone left awaitingConfirm set and never pushed, so the panel kept
+        // showing a question about a run that no longer exists — with no way
+        // out except reloading the extension.
         confirmResolver?.(false);
+        confirmResolver = null;
+        state.awaitingConfirm = null;
+        push();
         respond(state);
         return;
       case "confirm":
         confirmResolver?.(msg.approve);
         confirmResolver = null;
         state.awaitingConfirm = null;
+        push();
         respond(state);
         return;
       case "run":
@@ -247,6 +255,20 @@ async function runTask(task: string, mode: Mode): Promise<void> {
           }
 
           t.capture = round(performance.now() - mkc);
+
+          // Read the cost of that work into state so the panel can draw it.
+          // coveragePct is what the DOM already explained, so the remainder is
+          // the only part any model had to look at.
+          const swHeap = (performance as unknown as { memory?: { usedJSHeapSize: number } }).memory;
+          state.resources = {
+            provider: vision.provider,
+            heapMB: swHeap ? Math.round(swHeap.usedJSHeapSize / 1048576) : undefined,
+            offscreenMB: vision.memoryMB,
+            inferMs: vision.inferMs,
+            passes: vision.passes,
+            frameSkipped: plan.coveragePct,
+          };
+
           visionNote =
             `${vision.provider} · ${vision.passes} pass(es) ${vision.inferMs}ms · ` +
             `DOM explains ${plan.coveragePct}% · ${plan.regions.length} region(s) inspected · ` +
@@ -340,8 +362,15 @@ async function runTask(task: string, mode: Mode): Promise<void> {
 
       // ── 6 · transmit ────────────────────────────────────────────────────
       mk = performance.now();
-      const res: ServerResponse = await send(state.serverUrl, v.payload);
+      const exchange = await send(state.serverUrl, v.payload);
+      const res: ServerResponse = exchange.response;
       t.network = round(performance.now() - mk);
+
+      // The other half of the boundary. The panel shows the payload we sent and
+      // this reply side by side, so "what did the server actually see, and what
+      // did it hand back" is answerable from the UI rather than a terminal.
+      receipt.reply = exchange.raw;
+      receipt.replyMs = exchange.ms;
 
       const handled = await handleResponse(res, step, t, t0, receipt);
       if (handled.stop) return;
@@ -461,11 +490,26 @@ async function handleResponse(
       push();
       return { stop: true, action: null, thought: "", route: "server" };
 
-    case "ask_user":
+    case "ask_user": {
       state.awaitingConfirm = { action: { kind: "wait" }, why: res.question };
       log({ step, route: "ask_user", result: "pending", note: res.question, timings: done(t, t0), receipt });
       push();
-      return { stop: !(await waitForConfirm()), action: null, thought: "", route: "ask_user" };
+      const answered = await waitForConfirm();
+
+      // Record the answer. Without this the page is unchanged next step, the
+      // planner sees the same unfilled field and asks the identical question
+      // forever — which is exactly what happened before.
+      history.push({
+        action: "ask_user",
+        target: res.target,
+        result: answered ? "ok" : "blocked",
+        note: answered ? "user acknowledged" : "user declined",
+      });
+
+      state.awaitingConfirm = null;
+      push();
+      return { stop: !answered, action: null, thought: "", route: "ask_user" };
+    }
 
     case "need_image":
       // The next payload carries one masked frame. Nothing is re-sent: the
@@ -503,6 +547,10 @@ async function perceive(mode: Mode): Promise<RawScreenGraph | null> {
 }
 
 function waitForConfirm(): Promise<boolean> {
+  // Settle any prior wait before replacing it. Overwriting the resolver outright
+  // would strand the earlier promise, and the step awaiting it would never
+  // resume — a hang with the run still marked active and Stop the only exit.
+  confirmResolver?.(false);
   return new Promise((resolve) => {
     confirmResolver = resolve;
   });

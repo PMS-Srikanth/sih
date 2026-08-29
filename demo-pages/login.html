@@ -5,67 +5,184 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Northwind — Sign in</title>
 <style>
-  :root { --bg:#f6f7f8; --line:#dfe4e6; --ink:#171e21; --ink2:#5a686c; --acc:#0b6e77; }
+  :root { --bg:#f6f7f8; --line:#dfe4e6; --ink:#171e21; --ink2:#5a686c; --acc:#0b6e77;
+          --ok:#1f6b45; --bad:#a32b20; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 "Segoe UI",system-ui,sans-serif;
     display:grid; place-items:center; min-height:100vh; }
   .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:30px 32px;
-    width:380px; display:flex; flex-direction:column; gap:14px; }
+    width:400px; display:flex; flex-direction:column; gap:14px; }
   h1 { font-size:19px; margin:0; }
   p.muted { color:var(--ink2); font-size:13px; margin:0; }
   label { display:block; font-size:12px; font-weight:600; color:var(--ink2); margin-bottom:5px; }
   input { width:100%; padding:9px 11px; border:1px solid var(--line); border-radius:7px; font:inherit; }
   input:focus { outline:2px solid var(--acc); outline-offset:1px; border-color:transparent; }
+  input.err { border-color:var(--bad); background:#fdf3f2; }
   button { padding:10px 16px; border-radius:7px; border:1px solid var(--acc); background:var(--acc);
     color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  button:hover { filter:brightness(1.08); }
+  button:active { transform:translateY(1px); }
+  button:disabled { opacity:.6; cursor:progress; }
   .alt { background:#fff; color:var(--ink); border-color:var(--line); }
   .links { display:flex; justify-content:space-between; font-size:13px; }
   a { color:var(--acc); }
+  .msg { font-size:13px; padding:9px 11px; border-radius:7px; display:none; }
+  .msg.show { display:block; }
+  .msg.bad { background:#fdf3f2; color:var(--bad); border:1px solid #f0c8c4; }
+
+  /* the signed-in state — a real destination, so the agent's click has a visible result */
+  .app { display:none; width:520px; background:#fff; border:1px solid var(--line);
+    border-radius:12px; overflow:hidden; }
+  .app.show { display:block; }
+  .app header { background:var(--ink); color:#fff; padding:14px 22px; display:flex;
+    align-items:center; justify-content:space-between; }
+  .app header strong { font-size:14px; letter-spacing:.05em; }
+  .app .body { padding:24px 26px; display:flex; flex-direction:column; gap:14px; }
+  .badge { display:inline-flex; align-items:center; gap:8px; background:#e9f2ec; color:var(--ok);
+    border:1px solid #bcdcc9; border-radius:100px; padding:6px 14px; font-size:13px; font-weight:600;
+    align-self:flex-start; }
+  .kv { display:grid; grid-template-columns:130px 1fr; gap:8px 14px; font-size:14px; }
+  .kv b { color:var(--ink2); font-weight:600; }
+  .signout { background:#fff; color:var(--ink); border-color:var(--line); align-self:flex-start; }
 </style>
 </head>
 <body>
-  <form class="card">
+
+  <form class="card" id="loginCard" autocomplete="on">
     <h1>Sign in to Northwind</h1>
     <p class="muted">Support: help@northwind-careers.com · 1800 200 4400</p>
 
+    <div class="msg bad" id="err"></div>
+
     <div>
       <label for="email">Email</label>
-      <input id="email" type="email" autocomplete="email" value="srikar.gautam@gmail.com" />
+      <input id="email" name="email" type="email" autocomplete="email" value="srikar.gautam@gmail.com" />
     </div>
     <div>
       <label for="password">Password</label>
-      <input id="password" type="password" autocomplete="current-password" value="Hunter2!SuperSecret" />
+      <input id="password" name="password" type="password" autocomplete="current-password"
+             value="Hunter2!SuperSecret" />
     </div>
 
     <button type="button" id="signin">Sign in</button>
     <button type="button" class="alt" id="sso">Sign in with SSO</button>
 
     <div class="links">
-      <a href="#">Forgot password?</a>
-      <a href="#">Create an account</a>
+      <a href="#" id="forgot">Forgot password?</a>
+      <a href="#" id="create">Create an account</a>
     </div>
   </form>
+
+  <!-- Where a successful sign-in actually lands -->
+  <div class="app" id="app">
+    <header>
+      <strong>NORTHWIND</strong>
+      <button class="signout" id="signout" type="button">Sign out</button>
+    </header>
+    <div class="body">
+      <span class="badge">● Signed in</span>
+      <h1 style="margin:0;font-size:18px">Welcome back</h1>
+      <div class="kv">
+        <b>Account</b><span id="acctEmail">—</span>
+        <b>Signed in at</b><span id="acctTime">—</span>
+        <b>Method</b><span id="acctMethod">Password</span>
+      </div>
+      <p class="muted">Your application drafts and saved documents live here.</p>
+    </div>
+  </div>
 
   <div id="toast" role="status" aria-live="polite"></div>
   <style>
     #toast { position:fixed; left:50%; bottom:28px; transform:translate(-50%,14px); opacity:0;
       background:#171e21; color:#fff; padding:11px 20px; border-radius:8px; font-weight:600;
-      font-size:14px; pointer-events:none; transition:opacity .18s, transform .18s; }
+      font-size:14px; pointer-events:none; transition:opacity .18s, transform .18s; z-index:99; }
     #toast.on { opacity:1; transform:translate(-50%,0); }
   </style>
+
   <script>
     // Not alert(): a modal blocks the page thread, hiding the agent overlay and
-    // adding human reaction time to the latency numbers.
+    // adding human reaction time to every latency measurement.
     const toast = document.getElementById("toast");
     let timer;
     function say(msg) {
       toast.textContent = msg;
       toast.classList.add("on");
       clearTimeout(timer);
-      timer = setTimeout(() => toast.classList.remove("on"), 2200);
+      timer = setTimeout(() => toast.classList.remove("on"), 2400);
     }
-    document.getElementById("signin").addEventListener("click", () => say("Signed in."));
-    document.getElementById("sso").addEventListener("click", () => say("Signed in with SSO."));
+
+    const $ = (id) => document.getElementById(id);
+    const err = $("err");
+
+    function fail(message, field) {
+      err.textContent = message;
+      err.classList.add("show");
+      if (field) { field.classList.add("err"); field.focus(); }
+      say(message);
+    }
+
+    function clearErrors() {
+      err.classList.remove("show");
+      $("email").classList.remove("err");
+      $("password").classList.remove("err");
+    }
+
+    /**
+     * A real sign-in: it validates, it can fail, and on success it replaces the
+     * form with a signed-in view. The agent's click therefore has a consequence
+     * you can see, rather than a toast that proves nothing.
+     */
+    function signIn(method) {
+      clearErrors();
+      const email = $("email").value.trim();
+      const pw = $("password").value;
+
+      if (!email) return fail("Enter your email address.", $("email"));
+      if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(email)) return fail("That email address is not valid.", $("email"));
+      if (method === "password" && !pw) return fail("Enter your password.", $("password"));
+      if (method === "password" && pw.length < 8) return fail("Password must be at least 8 characters.", $("password"));
+
+      const btn = method === "password" ? $("signin") : $("sso");
+      const label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "Signing in…";
+
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = label;
+        $("acctEmail").textContent = email;
+        $("acctTime").textContent = new Date().toLocaleString();
+        $("acctMethod").textContent = method === "password" ? "Password" : "Single sign-on";
+        $("loginCard").style.display = "none";
+        $("app").classList.add("show");
+        document.title = "Northwind — Signed in";
+        say("Signed in successfully.");
+      }, 450);
+    }
+
+    $("signin").addEventListener("click", () => signIn("password"));
+    $("sso").addEventListener("click", () => signIn("sso"));
+
+    $("signout").addEventListener("click", () => {
+      $("app").classList.remove("show");
+      $("loginCard").style.display = "flex";
+      document.title = "Northwind — Sign in";
+      say("Signed out.");
+    });
+
+    $("forgot").addEventListener("click", (e) => {
+      e.preventDefault();
+      say("A reset link would be emailed to you.");
+    });
+    $("create").addEventListener("click", (e) => {
+      e.preventDefault();
+      say("Registration is not part of this demo.");
+    });
+
+    // Enter submits, as on any real login form.
+    for (const id of ["email", "password"]) {
+      $(id).addEventListener("keydown", (e) => { if (e.key === "Enter") signIn("password"); });
+    }
   </script>
 </body>
 </html>

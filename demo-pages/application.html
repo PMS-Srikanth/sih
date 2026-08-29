@@ -185,7 +185,8 @@
     clearTimeout(timer);
     timer = setTimeout(() => toast.classList.remove("on"), 2200);
   }
-  // The photo never leaves this page — it is read locally into an object URL.
+
+  // The photo never leaves this page - it is read locally into an object URL.
   // Cordon then has to find the face in the pixels: the DOM only says <img>.
   const pick = document.getElementById("photoPick");
   const idPhoto = document.getElementById("idPhoto");
@@ -198,8 +199,148 @@
     say("Photo loaded. Run Cordon to see it detected and masked.");
   });
 
-  document.getElementById("save").addEventListener("click", () => say("Draft saved."));
-  document.getElementById("submit").addEventListener("click", () => say("Application submitted."));
+  // ---------------------------------------------------------------------------
+  // Real form behaviour.
+  //
+  // A demo page whose buttons only raise a toast proves nothing: you cannot tell
+  // whether the agent actually filled a field or merely clicked something. So
+  // Save draft persists, Submit validates and produces a receipt, and both are
+  // observable after the agent has finished.
+  // ---------------------------------------------------------------------------
+  const DRAFT_KEY = "northwind.application.draft";
+  const FIELDS = ["fullname","email","phone","dob","address","pan","aadhaar",
+                  "years","notice","summary","portfolio"];
+  const LABELS = {
+    fullname:"Full name", email:"Email address", phone:"Mobile number",
+    dob:"Date of birth", address:"Street address", pan:"PAN", aadhaar:"Aadhaar number",
+    years:"Years of experience", notice:"Notice period",
+    summary:"Summary of experience", portfolio:"Portfolio URL",
+  };
+
+  const el = (id) => document.getElementById(id);
+  const readForm = () => {
+    const o = {};
+    for (const f of FIELDS) { const n = el(f); if (n) o[f] = n.value; }
+    return o;
+  };
+
+  /** Password and OTP are never written to storage, even locally. */
+  function saveDraft() {
+    const data = readForm();
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ data, at: Date.now() }));
+    } catch {
+      say("Draft could not be saved - storage is blocked.");
+      return;
+    }
+    const filled = Object.values(data).filter((v) => v && v.trim()).length;
+    showBanner("save", "Draft saved - " + filled + " of " + FIELDS.length +
+      " fields, at " + new Date().toLocaleTimeString() +
+      ". Reload the page and it comes back.");
+    say("Draft saved.");
+  }
+
+  function restoreDraft() {
+    let raw;
+    try { raw = localStorage.getItem(DRAFT_KEY); } catch { return; }
+    if (!raw) return;
+    try {
+      const { data, at } = JSON.parse(raw);
+      for (const f of FIELDS) {
+        const n = el(f);
+        if (n && typeof data[f] === "string") n.value = data[f];
+      }
+      showBanner("save", "Draft restored from " + new Date(at).toLocaleString() + ".");
+    } catch { /* corrupt draft - ignore it rather than blocking the page */ }
+  }
+
+  function validate() {
+    const d = readForm();
+    if (!d.fullname.trim()) return ["fullname", "Full name is required."];
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(d.email)) return ["email", "Enter a valid email address."];
+    if (!/^\d{10}$/.test(d.phone.replace(/\D/g, ""))) return ["phone", "Mobile number must be 10 digits."];
+    if (!d.summary.trim()) return ["summary", "Tell us about your experience before submitting."];
+    return null;
+  }
+
+  function submitApplication() {
+    const bad = validate();
+    if (bad) {
+      const [id, msg] = bad;
+      const n = el(id);
+      n.style.borderColor = "#a32b20";
+      n.scrollIntoView({ behavior: "smooth", block: "center" });
+      n.focus();
+      showBanner("err", msg);
+      say(msg);
+      return;
+    }
+    for (const f of FIELDS) { const n = el(f); if (n) n.style.borderColor = ""; }
+
+    const d = readForm();
+    const ref = "NW-" + Math.random().toString(36).slice(2, 8).toUpperCase();
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+
+    // The receipt is the proof. It lists exactly what reached each field, so
+    // after an agent run you can check the values against your own vault
+    // without trusting the extension's own reporting.
+    const rows = FIELDS
+      .filter((f) => el(f) && el(f).value.trim())
+      .map((f) => "<tr><th>" + LABELS[f] + "</th><td>" + escapeHtml(el(f).value) + "</td></tr>")
+      .join("");
+
+    const done = document.createElement("div");
+    done.className = "card";
+    done.id = "receipt";
+    done.innerHTML =
+      "<h2>Application submitted</h2>" +
+      "<p class='muted'>Reference <b>" + ref + "</b> &middot; " + new Date().toLocaleString() + "</p>" +
+      "<table style='width:100%;border-collapse:collapse;font-size:13px'>" + rows + "</table>" +
+      "<p class='muted' style='margin:16px 0 0'>This is what the page actually received. " +
+      "Password and verification code are never included in a submission record.</p>";
+    done.querySelectorAll("th").forEach((th) => {
+      th.style.cssText = "text-align:left;font-weight:600;color:#5a686c;padding:6px 12px 6px 0;" +
+        "width:180px;vertical-align:top;border-top:1px solid #eef1f2";
+    });
+    done.querySelectorAll("td").forEach((td) => {
+      td.style.cssText = "padding:6px 0;border-top:1px solid #eef1f2";
+    });
+
+    const wrap = document.querySelector(".wrap");
+    const old = el("receipt");
+    if (old) old.remove();
+    wrap.appendChild(done);
+    done.scrollIntoView({ behavior: "smooth", block: "start" });
+
+    el("submit").disabled = true;
+    el("submit").textContent = "Submitted";
+    el("save").disabled = true;
+    say("Application submitted - reference " + ref);
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  }
+
+  function showBanner(kind, text) {
+    let b = el("banner");
+    if (!b) {
+      b = document.createElement("div");
+      b.id = "banner";
+      const wrap = document.querySelector(".wrap");
+      wrap.insertBefore(b, wrap.firstChild);
+    }
+    const ok = kind !== "err";
+    b.style.cssText = "padding:11px 16px;border-radius:8px;font-size:13px;font-weight:600;" +
+      "border:1px solid " + (ok ? "#bcdcc9" : "#f0c8c4") + ";" +
+      "background:" + (ok ? "#e9f2ec" : "#fdf3f2") + ";color:" + (ok ? "#1f6b45" : "#a32b20");
+    b.textContent = text;
+  }
+
+  el("save").addEventListener("click", saveDraft);
+  el("submit").addEventListener("click", submitApplication);
+  restoreDraft();
 </script>
 </body>
 </html>

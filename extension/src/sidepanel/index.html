@@ -115,6 +115,44 @@
       <div class="stat"><span class="k" id="sBytes">0</span><span class="v">bytes sent</span></div>
     </section>
 
+    <details class="res" id="resBox" hidden>
+      <summary>
+        <span class="lbl">Resources</span>
+        <span class="rsum" id="rsum"></span>
+      </summary>
+
+      <div class="gauges">
+        <div class="gauge">
+          <span class="gk">Compute</span>
+          <span class="gv" id="gProvider">—</span>
+          <span class="gn" id="gProviderNote">which processor did the work</span>
+        </div>
+        <div class="gauge">
+          <span class="gk">Model memory</span>
+          <span class="gv" id="gMem">—</span>
+          <span class="gn">offscreen heap, where the models live</span>
+        </div>
+        <div class="gauge">
+          <span class="gk">Frame skipped</span>
+          <span class="gv" id="gSkip">—</span>
+          <span class="gn">explained by the DOM, so never analysed</span>
+        </div>
+        <div class="gauge">
+          <span class="gk">Inference</span>
+          <span class="gv" id="gInfer">—</span>
+          <span class="gn" id="gPasses">model time last step</span>
+        </div>
+      </div>
+
+      <p class="rlab">Where the time went — last step</p>
+      <div class="tbar" id="tbar"></div>
+      <div class="tkey" id="tkey"></div>
+
+      <p class="rlab">On device vs. network — whole run</p>
+      <div class="sbar" id="sbar"></div>
+      <p class="pnote" id="splitNote"></p>
+    </details>
+
     <details class="entered" id="enteredBox" hidden>
       <summary>
         <span class="lbl">What the agent entered</span>

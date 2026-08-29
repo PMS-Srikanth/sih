@@ -100,6 +100,40 @@
     </div>
   </form>
 
+  <form class="card">
+    <h2>Experience</h2>
+    <p class="muted">None of this lives in your profile. The agent should ask rather than guess.</p>
+    <div class="grid">
+      <div>
+        <label for="years">Years of experience</label>
+        <select id="years" name="years">
+          <option value="">Select…</option>
+          <option>0–1</option><option>2–4</option><option>5–8</option><option>9+</option>
+        </select>
+      </div>
+      <div>
+        <label for="notice">Notice period</label>
+        <select id="notice" name="notice">
+          <option value="">Select…</option>
+          <option>Immediate</option><option>30 days</option><option>60 days</option><option>90 days</option>
+        </select>
+      </div>
+      <div>
+        <label for="employer">Current employer</label>
+        <input id="employer" name="employer" placeholder="Company name" />
+      </div>
+      <div>
+        <label for="ctc">Expected salary (LPA)</label>
+        <input id="ctc" name="ctc" placeholder="e.g. 18" />
+      </div>
+      <div class="full">
+        <label for="why">Why do you want this role?</label>
+        <textarea id="why" name="why"
+          placeholder="Free text. Not derivable from stored identity data."></textarea>
+      </div>
+    </div>
+  </form>
+
   <div class="card">
     <div class="row">
       <button type="button" class="alt" id="save">Save progress</button>
@@ -121,8 +155,95 @@
     clearTimeout(timer);
     timer = setTimeout(() => toast.classList.remove("on"), 2200);
   }
-  document.getElementById("save").addEventListener("click", () => say("Progress saved."));
-  document.getElementById("register").addEventListener("click", () => say("Registered."));
+
+  // A blank form is only a useful test if you can see what ended up in it.
+  // Save writes to localStorage and restores on reload; Register validates and
+  // prints a receipt, so the agent’s work is checkable without the extension.
+  const KEY = "fernco.registration";
+  const FIELDS = ["name","email","mobile","birth","addr","pannum","uid","vpa",
+                  "years","notice","employer","ctc","about","why"];
+  const LABELS = {
+    name:"Full name", email:"Email address", mobile:"Mobile number", birth:"Date of birth",
+    addr:"Street address", pannum:"PAN", uid:"Aadhaar number", vpa:"UPI ID",
+    years:"Years of experience", notice:"Notice period", employer:"Current employer",
+    ctc:"Expected salary (LPA)", about:"About you", why:"Why this role",
+  };
+  const el = (id) => document.getElementById(id);
+  const read = () => Object.fromEntries(FIELDS.filter(el).map((f) => [f, el(f).value]));
+  const esc = (v) => String(v).replace(/[&<>"]/g, (c) =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+
+  function banner(text, bad) {
+    let b = el("banner");
+    if (!b) {
+      b = document.createElement("div");
+      b.id = "banner";
+      const w = document.querySelector(".wrap");
+      w.insertBefore(b, w.firstChild);
+    }
+    b.style.cssText = "padding:11px 16px;border-radius:6px;font-size:13px;font-weight:600;border:1px solid "
+      + (bad ? "#f0c8c4" : "#bcdcc9") + ";background:" + (bad ? "#fdf3f2" : "#e9f2ec")
+      + ";color:" + (bad ? "#a32b20" : "#1f6b45");
+    b.textContent = text;
+  }
+
+  el("save").addEventListener("click", () => {
+    const data = read();               // the password is deliberately not stored
+    try { localStorage.setItem(KEY, JSON.stringify({ data, at: Date.now() })); }
+    catch { return say("Storage is blocked - progress not saved."); }
+    const n = Object.values(data).filter((v) => v && v.trim()).length;
+    banner("Progress saved - " + n + " of " + FIELDS.length + " fields at "
+      + new Date().toLocaleTimeString() + ". Reload to confirm it persists.", false);
+    say("Progress saved.");
+  });
+
+  el("register").addEventListener("click", () => {
+    const d = read();
+    const missing = [];
+    if (!d.name.trim()) missing.push("Full name");
+    if (!/^[^@s]+@[^@s]+.[a-z]{2,}$/i.test(d.email)) missing.push("a valid email");
+    if (!/^d{10}$/.test((d.mobile || "").replace(/D/g, ""))) missing.push("a 10-digit mobile");
+    if (!el("pw").value) missing.push("a password");
+    if (!d.years) missing.push("Years of experience");
+    if (missing.length) {
+      banner("Cannot register yet - still need: " + missing.join(", ") + ".", true);
+      say("Missing: " + missing[0]);
+      return;
+    }
+
+    const ref = "FC-" + Math.random().toString(36).slice(2, 8).toUpperCase();
+    try { localStorage.removeItem(KEY); } catch {}
+    const rows = FIELDS.filter((f) => el(f) && el(f).value.trim())
+      .map((f) => "<tr><th style=\"text-align:left;color:#5a686c;padding:6px 14px 6px 0;width:180px;"
+        + "vertical-align:top;border-top:1px solid #eef1f2\">" + LABELS[f]
+        + "</th><td style=\"padding:6px 0;border-top:1px solid #eef1f2\">" + esc(el(f).value) + "</td></tr>")
+      .join("");
+    const card = document.createElement("div");
+    card.className = "card";
+    card.id = "receipt";
+    card.innerHTML = "<h2>Registered</h2><p class=\"muted\">Reference <b>" + ref
+      + "</b> &middot; " + new Date().toLocaleString() + "</p>"
+      + "<table style=\"width:100%;border-collapse:collapse;font-size:13px\">" + rows + "</table>"
+      + "<p class=\"muted\" style=\"margin:16px 0 0\">This is exactly what the form received. "
+      + "Compare it against your vault to verify the agent filled the right values.</p>";
+    const old = el("receipt");
+    if (old) old.remove();
+    document.querySelector(".wrap").appendChild(card);
+    card.scrollIntoView({ behavior: "smooth", block: "start" });
+    el("register").disabled = true;
+    el("register").textContent = "Registered";
+    say("Registered - " + ref);
+  });
+
+  // Restore anything saved earlier.
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (raw) {
+      const { data, at } = JSON.parse(raw);
+      for (const f of FIELDS) if (el(f) && typeof data[f] === "string") el(f).value = data[f];
+      banner("Progress restored from " + new Date(at).toLocaleString() + ".", false);
+    }
+  } catch {}
 </script>
 </body>
 </html>

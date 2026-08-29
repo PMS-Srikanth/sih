@@ -188,7 +188,7 @@ export type ServerResponse =
   | { type: "action"; thought: string; action: AgentAction; confidence: number }
   | { type: "plan"; thought: string; steps: AgentAction[]; confidence: number }
   | { type: "data"; answer: string; cite?: string[] }
-  | { type: "ask_user"; question: string; options?: string[] }
+  | { type: "ask_user"; question: string; options?: string[]; target?: string }
   | { type: "need_image"; reason: string }
   | { type: "error"; message: string };
 
@@ -225,6 +225,10 @@ export interface PrivacyReceipt {
   payload?: string;
   /** Whether a masked frame was included in that payload. */
   imageBytes?: number;
+  /** The server's reply verbatim — the returning half of the exchange. */
+  reply?: string;
+  /** Round-trip time for that reply, in ms. */
+  replyMs?: number;
   verifier: { version: string; passed: boolean; checks: VerifierCheck[]; retries: number };
 }
 
@@ -304,6 +308,26 @@ export type PanelMessage =
   | { kind: "vaultLock" }
   | { kind: "vaultDestroy" };
 
+/**
+ * What the run cost the machine. The problem statement grades resource usage
+ * alongside accuracy, so this is surfaced in the panel rather than left in a
+ * terminal — a judge should be able to read it off the screen.
+ */
+export interface ResourceSample {
+  /** "webgpu" when the GPU is doing the work, "wasm" when it is the CPU. */
+  provider: string;
+  /** Service-worker JS heap, MB. Undefined where the browser withholds it. */
+  heapMB?: number;
+  /** Offscreen-document heap, MB — where the models actually live. */
+  offscreenMB?: number;
+  /** Model inference time for the most recent step, ms. */
+  inferMs: number;
+  /** How many model passes that step took (whole frame + crops). */
+  passes: number;
+  /** Fraction of the frame the coverage map decided needed no model at all. */
+  frameSkipped?: number;
+}
+
 export interface AgentState {
   running: boolean;
   task: string;
@@ -313,4 +337,6 @@ export interface AgentState {
   awaitingConfirm: null | { action: AgentAction; why: string };
   answer?: string;
   error?: string;
+  /** Most recent resource reading, refreshed every step. */
+  resources?: ResourceSample;
 }

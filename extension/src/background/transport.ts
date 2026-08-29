@@ -6,7 +6,17 @@ import type { SanitizedContext, ServerResponse } from "@/shared/types";
 
 export const DEFAULT_SERVER = "http://127.0.0.1:8787/agent";
 
-export async function send(serverUrl: string, payload: string): Promise<ServerResponse> {
+export interface Exchange {
+  response: ServerResponse;
+  /** The server’s reply verbatim, for the exchange view in the panel. */
+  raw: string;
+  /** Wall-clock round trip in ms. */
+  ms: number;
+}
+
+export async function send(serverUrl: string, payload: string): Promise<Exchange> {
+  const t0 = performance.now();
+  const at = () => Math.round(performance.now() - t0);
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 30_000);
   try {
@@ -16,14 +26,31 @@ export async function send(serverUrl: string, payload: string): Promise<ServerRe
       body: payload,
       signal: ctl.signal,
     });
-    if (!res.ok) return { type: "error", message: `server returned ${res.status}` };
-    const json = (await res.json()) as ServerResponse;
-    return validate(json);
+    const text = await res.text();
+    if (!res.ok) {
+      return { response: { type: "error", message: `server returned ${res.status}` }, raw: text.slice(0, 4000), ms: at() };
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      return { response: { type: "error", message: "reply was not JSON" }, raw: text.slice(0, 4000), ms: at() };
+    }
+    return { response: validate(json), raw: pretty(text), ms: at() };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return { type: "error", message: `cannot reach ${serverUrl} — ${msg}` };
+    return { response: { type: "error", message: `cannot reach ${serverUrl} — ${msg}` }, raw: "", ms: at() };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+/** Re-indent for display. Falls back to the original text if it will not parse. */
+function pretty(text: string): string {
+  try {
+    return JSON.stringify(JSON.parse(text), null, 2).slice(0, 4000);
+  } catch {
+    return text.slice(0, 4000);
   }
 }
 
@@ -50,7 +77,14 @@ function validate(r: unknown): ServerResponse {
     case "data":
       return { type: "data", answer: String(o.answer ?? ""), cite: Array.isArray(o.cite) ? (o.cite as string[]) : undefined };
     case "ask_user":
-      return { type: "ask_user", question: String(o.question ?? ""), options: Array.isArray(o.options) ? (o.options as string[]) : undefined };
+      return {
+        type: "ask_user",
+        question: String(o.question ?? ""),
+        // Carried through deliberately: the client records which field was asked
+        // about so the planner is not handed the same question next step.
+        target: o.target ? String(o.target) : undefined,
+        options: Array.isArray(o.options) ? (o.options as string[]) : undefined,
+      };
     case "need_image":
       return { type: "need_image", reason: String(o.reason ?? "") };
     default:

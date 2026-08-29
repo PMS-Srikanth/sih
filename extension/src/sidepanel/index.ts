@@ -279,8 +279,114 @@ function render(s: AgentState): void {
     summaryEl.innerHTML += `<div class="warn">⚠️ Vision gracefully degraded (offscreen unavailable)</div>`;
   }
 
+  drawResources(s);
   drawEntered(s.steps);
   drawLog(s.steps);
+}
+
+/**
+ * The resource panel. The problem statement grades resource usage as its own
+ * metric, so it has to be readable off the screen during a demo rather than
+ * dug out of a terminal.
+ *
+ * Three honest caveats are baked into the wording below:
+ *  - "webgpu" means the GPU ran the model. It is not a utilisation percentage;
+ *    no browser API exposes one, and inventing a number would be worse than
+ *    naming the backend.
+ *  - heap size is what `performance.memory` reports, which Chrome quantises.
+ *  - "frame skipped" is the share of the frame the DOM already explained, which
+ *    is the actual saving the coverage map buys us.
+ */
+function drawResources(s: AgentState): void {
+  const box = $("resBox") as HTMLDetailsElement;
+  const r = s.resources;
+  const last = s.steps[s.steps.length - 1];
+
+  if (!r && !last) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+
+  if (r) {
+    const gpu = r.provider === "webgpu";
+    const prov = $("gProvider");
+    prov.textContent = gpu ? "GPU" : r.provider === "none" ? "—" : "CPU";
+    prov.className = `gv ${gpu ? "good" : "warn"}`;
+    $("gProviderNote").textContent = gpu
+      ? "WebGPU — the graphics card ran the model"
+      : r.provider === "none"
+        ? "no model pass was needed this step"
+        : "WASM + SIMD fallback — no WebGPU on this machine";
+
+    $("gMem").textContent = r.offscreenMB ? `${r.offscreenMB} MB` : "n/a";
+    $("gSkip").textContent = r.frameSkipped !== undefined ? `${r.frameSkipped}%` : "—";
+    $("gInfer").textContent = r.inferMs ? `${Math.round(r.inferMs)} ms` : "0 ms";
+    $("gPasses").textContent = `${r.passes} model pass${r.passes === 1 ? "" : "es"} last step`;
+    $("rsum").textContent = `${gpu ? "GPU" : "CPU"} · ${Math.round(r.inferMs)} ms`;
+  } else {
+    $("rsum").textContent = "no model pass yet";
+  }
+
+  // Stacked latency bar for the most recent step.
+  const STAGES: Array<[keyof StageTimings, string, string]> = [
+    ["capture", "capture", "#5b8def"],
+    ["perceive", "perceive", "#2fa8a0"],
+    ["detect", "detect", "#c9922e"],
+    ["redact", "redact", "#b4574a"],
+    ["verify", "verify", "#7a5bbd"],
+    ["network", "network", "#d0563f"],
+    ["execute", "execute", "#3f9d5c"],
+  ];
+  const tbar = $("tbar");
+  const tkey = $("tkey");
+  tbar.textContent = "";
+  tkey.textContent = "";
+
+  const tm = last?.timings;
+  const total = tm ? STAGES.reduce((n, [k]) => n + (tm[k] ?? 0), 0) : 0;
+  if (tm && total > 0) {
+    for (const [k, label, colour] of STAGES) {
+      const v = tm[k] ?? 0;
+      if (v <= 0) continue;
+      const seg = document.createElement("i");
+      seg.style.width = `${(v / total) * 100}%`;
+      seg.style.background = colour;
+      seg.title = `${label} — ${v} ms`;
+      tbar.append(seg);
+
+      const item = document.createElement("span");
+      item.className = "tki";
+      const dot = document.createElement("i");
+      dot.style.background = colour;
+      item.append(dot, document.createTextNode(`${label} ${v}ms`));
+      tkey.append(item);
+    }
+  } else {
+    tbar.append(el("i", "empty-seg", ""));
+  }
+
+  // Whole-run split. This is the headline privacy-and-cost number: how much of
+  // the task never needed the network at all.
+  const localN = s.steps.filter((x) => x.route === "local" || x.route === "done").length;
+  const netN = s.steps.filter((x) => x.route === "server").length;
+  const sbar = $("sbar");
+  sbar.textContent = "";
+  const denom = localN + netN;
+  if (denom > 0) {
+    const a = document.createElement("i");
+    a.className = "s-local";
+    a.style.width = `${(localN / denom) * 100}%`;
+    const b = document.createElement("i");
+    b.className = "s-net";
+    b.style.width = `${(netN / denom) * 100}%`;
+    sbar.append(a, b);
+    $("splitNote").textContent =
+      `${localN} of ${denom} steps finished on this device. ` +
+      `${netN} needed the server, and each of those sent only redacted text.`;
+  } else {
+    $("splitNote").textContent = "No steps yet.";
+  }
 }
 
 /**
@@ -465,6 +571,26 @@ function receiptView(r: PrivacyReceipt): HTMLElement {
 
     const pre = document.createElement("pre");
     pre.textContent = r.payload;
+    det.append(pre);
+    wrap.append(det);
+  }
+
+  // The returning half. Showing only what we sent proves we redacted; showing
+  // what came back proves the server could still do the job on redacted input —
+  // and lets you see that its instructions name handles, never values.
+  if (r.reply) {
+    const det = document.createElement("details");
+    det.className = "payload reply";
+
+    const sum = document.createElement("summary");
+    sum.append(
+      el("span", "psum", "What came back"),
+      el("span", "pbytes", `${r.reply.length} B${r.replyMs !== undefined ? ` · ${r.replyMs} ms` : ""}`),
+    );
+    det.append(sum);
+
+    const pre = document.createElement("pre");
+    pre.textContent = r.reply;
     det.append(pre);
     wrap.append(det);
   }

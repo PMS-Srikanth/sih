@@ -230,6 +230,13 @@ button.danger:hover { border-color: var(--bad); }
   border-radius: 5px; max-height: 260px; overflow: auto;
   font: 400 10px/1.45 var(--mono); color: var(--ink2); white-space: pre; tab-size: 2;
 }
+/* The two directions of the boundary read differently at a glance: outbound is
+   the thing we make claims about, inbound is the proof those claims were
+   survivable. Same widget, different accent. */
+.payload.reply > summary { color: var(--ok); }
+.payload.reply pre { border-left: 2px solid var(--ok); }
+.payload:not(.reply) pre { border-left: 2px solid var(--server); }
+
 .checks { display: flex; flex-direction: column; gap: 3px; }
 .check { display: flex; gap: 6px; align-items: baseline; font-size: 11px; }
 .check b { font: 700 9.5px var(--mono); min-width: 17px; }
@@ -241,3 +248,50 @@ footer { padding: 9px 16px 12px; border-top: 1px solid var(--line); }
 footer input { font: 500 11px var(--mono); padding: 6px 9px; }
 
 .empty { color: var(--ink3); font-size: 12px; text-align: center; padding: 26px 12px; line-height: 1.6; }
+
+/* ── Resources ────────────────────────────────────────────────────────────
+   The problem statement grades resource usage, so it gets a first-class panel
+   rather than a console line. Everything here is measured, not estimated: the
+   compute row names the backend that actually ran the model, because no browser
+   exposes a GPU utilisation percentage and a made-up one would be worse. */
+.res { border: 1px solid var(--line); border-radius: 7px; margin: 0 16px 10px; padding: 0 11px; }
+.res > summary {
+  display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none;
+  padding: 9px 0; user-select: none;
+}
+.res > summary::-webkit-details-marker { display: none; }
+.res > summary::before { content: "▸"; font-size: 9px; color: var(--ink3); transition: transform 0.15s; }
+.res[open] > summary::before { transform: rotate(90deg); }
+.rsum { margin-left: auto; font: 500 10.5px var(--mono); color: var(--ink3); }
+
+.gauges { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; padding: 2px 0 10px; }
+.gauge {
+  display: flex; flex-direction: column; gap: 2px;
+  background: var(--surf); border: 1px solid var(--line);
+  border-radius: 6px; padding: 8px 10px;
+}
+.gk { font: 700 8.5px/1 var(--mono); letter-spacing: 0.09em; text-transform: uppercase; color: var(--ink3); }
+.gv { font: 600 17px/1.15 inherit; color: var(--ink); }
+.gv.good { color: var(--ok); }
+.gv.warn { color: var(--bound); }
+.gn { font-size: 9.5px; line-height: 1.35; color: var(--ink3); }
+
+.rlab {
+  font: 700 8.5px/1 var(--mono); letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--ink3); margin: 4px 0 5px;
+}
+
+.tbar, .sbar {
+  display: flex; height: 9px; border-radius: 5px; overflow: hidden;
+  background: var(--surf2); border: 1px solid var(--line);
+}
+.tbar i, .sbar i { display: block; height: 100%; min-width: 1px; }
+.tbar i.empty-seg { width: 100%; background: var(--surf2); }
+.sbar .s-local { background: var(--ok); }
+.sbar .s-net { background: var(--server); }
+
+.tkey { display: flex; flex-wrap: wrap; gap: 4px 11px; margin: 7px 0 11px; }
+.tki { display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px; color: var(--ink3); }
+.tki i { width: 7px; height: 7px; border-radius: 2px; display: block; }
+
+.res .pnote { margin: 7px 0 11px; }

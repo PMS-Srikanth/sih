@@ -81,10 +81,16 @@ function plan(ctx) {
   }
 
   // 3 · A password field is never filled by us — the value does not exist here.
-  const secret = fields.find((e) => e.sensitive);
+  //     Ask once. If the user has already been asked about this field, move on:
+  //     re-asking about an unchanged page is an infinite loop, not a strategy.
+  const asked = new Set(
+    (ctx.history || []).filter((h) => h.action === "ask_user" && h.target).map((h) => h.target),
+  );
+  const secret = fields.find((e) => e.sensitive && !asked.has(e.id));
   if (secret && wantsFill(task)) {
     return {
       type: "ask_user",
+      target: secret.id,
       question: `"${secret.name ?? secret.id}" needs a secret. The server has no access to it — fill it yourself, then continue.`,
     };
   }
