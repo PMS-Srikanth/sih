@@ -193,7 +193,7 @@
     catch { return say("Storage is blocked - progress not saved."); }
     const n = Object.values(data).filter((v) => v && v.trim()).length;
     banner("Progress saved - " + n + " of " + FIELDS.length + " fields at "
-      + new Date().toLocaleTimeString() + ". Reload to confirm it persists.", false);
+      + new Date().toLocaleTimeString() + ". The page will not refill itself on reload.", false);
     say("Progress saved.");
   });
 
@@ -235,15 +235,10 @@
     say("Registered - " + ref);
   });
 
-  // Restore anything saved earlier.
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const { data, at } = JSON.parse(raw);
-      for (const f of FIELDS) if (el(f) && typeof data[f] === "string") el(f).value = data[f];
-      banner("Progress restored from " + new Date(at).toLocaleString() + ".", false);
-    }
-  } catch {}
+  // Deliberately no auto-restore. A form that refills itself on load makes it
+  // impossible to tell whether a value is there because the agent put it there
+  // or because the page did. Anything saved in a previous session is discarded.
+  try { localStorage.removeItem(KEY); } catch {}
 </script>
 </body>
 </html>

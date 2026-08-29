@@ -165,7 +165,7 @@ went. The animation time is listed separately and excluded from every figure.
 npm run eval          # PII precision/recall, redaction, verifier, router
 npm run vlm-check     # the open-weights server path, against a mock endpoint
 npm run model-check   # the ONNX model loads and its shapes match
-npm run browser-check # the extension in a real browser — 53 assertions
+npm run browser-check # the extension in a real browser — 56 assertions
 npm run check-escapes # regexes whose backslashes were eaten by a shell edit
 npm run report        # regenerate demo-pages/report.html from the last eval
 npm run live-model    # against a real model (needs: ollama pull qwen2.5:3b)

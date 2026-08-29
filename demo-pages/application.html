@@ -254,22 +254,19 @@
     const filled = Object.values(data).filter((v) => v && v.trim()).length;
     showBanner("save", "Draft saved - " + filled + " of " + FIELDS.length +
       " fields, at " + new Date().toLocaleTimeString() +
-      ". Reload the page and it comes back.");
+      ". The page will not refill itself on reload.");
     say("Draft saved.");
   }
 
-  function restoreDraft() {
-    let raw;
-    try { raw = localStorage.getItem(DRAFT_KEY); } catch { return; }
-    if (!raw) return;
-    try {
-      const { data, at } = JSON.parse(raw);
-      for (const f of FIELDS) {
-        const n = el(f);
-        if (n && typeof data[f] === "string") n.value = data[f];
-      }
-      showBanner("save", "Draft restored from " + new Date(at).toLocaleString() + ".");
-    } catch { /* corrupt draft - ignore it rather than blocking the page */ }
+  // Deliberately no auto-restore.
+  //
+  // The page used to refill itself from the last saved draft on load, which made
+  // it impossible to tell whether a field held your data because the agent had
+  // just put it there or because the page had quietly repopulated. A demo page
+  // has to start in a known state, so any draft from a previous session is
+  // discarded here rather than restored.
+  function discardOldDraft() {
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* storage blocked; nothing to discard */ }
   }
 
   function validate() {
@@ -391,7 +388,7 @@
 
   el("save").addEventListener("click", saveDraft);
   el("submit").addEventListener("click", submitApplication);
-  restoreDraft();
+  discardOldDraft();
 </script>
 </body>
 </html>

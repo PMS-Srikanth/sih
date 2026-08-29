@@ -282,6 +282,19 @@ try {
   check("Save progress genuinely persists", saved.stored === true);
   check("and says so on the page", /progress saved/i.test(saved.banner), JSON.stringify(saved.banner.slice(0, 60)));
 
+  // A demo page has to start in a known state. Refilling itself from a previous
+  // session made it impossible to tell whether a value was there because the
+  // agent had just entered it or because the page had quietly repopulated.
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await sleep(400);
+  const afterReload = await page.evaluate(() =>
+    ["name", "email", "mobile"]
+      .map((id) => [id, document.getElementById(id)?.value ?? ""])
+      .filter(([, v]) => v !== ""),
+  );
+  check("the form does NOT refill itself on reload", afterReload.length === 0,
+    afterReload.length ? afterReload.map(([k, v]) => `${k}=${v}`).join(", ") : "starts empty");
+
   await page.click("#register");
   await sleep(250);
   const blocked = await page.evaluate(() => document.getElementById("banner")?.textContent ?? "");
