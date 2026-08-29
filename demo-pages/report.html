@@ -77,7 +77,7 @@
   <p>SIH26171 · On-device Visual Perception for Light-weight Browser Agents</p>
   <div class="verdict pass">
     ✓ All checks passed
-    <span style="opacity:.65;font-weight:400">· generated 29/8/2026, 9:14:28 am</span>
+    <span style="opacity:.65;font-weight:400">· generated 29/8/2026, 9:19:07 am</span>
   </div>
 </div></header>
 
@@ -135,9 +135,9 @@
       <span class="mname">End-to-end latency</span>
       <span class="mweight">15% of the marks</span>
     </div>
-    <p class="mval">7.9 ms pipeline <span class="chip ok">measured this run</span></p>
+    <p class="mval">13.7 ms pipeline <span class="chip ok">measured this run</span></p>
     <p class="mwhat">How long from asking for something to it happening?</p>
-    <p class="mhow">6 of 10 benchmark tasks never touch the network at all, which is the largest single latency win available. The privacy pipeline itself costs 7.9 ms for 21 elements.</p>
+    <p class="mhow">6 of 10 benchmark tasks never touch the network at all, which is the largest single latency win available. The privacy pipeline itself costs 13.7 ms for 21 elements.</p>
   </div>
 </section>
 
@@ -228,10 +228,10 @@
   <h2>Metric 5 — where the time goes</h2>
   <p class="lede">The privacy pipeline runs on every step that leaves the device.
      21 elements, end to end:</p>
-  <svg class="bar" viewBox="0 0 100 30" preserveAspectRatio="none" height="30"><rect x="0%" y="0" width="56.186868686868685%" height="30" fill="#c9922e"><title>detect: 4.45</title></rect><rect x="56.186868686868685%" y="0" width="14.141414141414144%" height="30" fill="#b4574a"><title>redact: 1.12</title></rect><rect x="70.32828282828282%" y="0" width="29.67171717171717%" height="30" fill="#7a5bbd"><title>verify: 2.35</title></rect></svg>
-  <div class="legend"><span><i style="background:#c9922e"></i>detect <b>4.45</b></span><span><i style="background:#b4574a"></i>redact <b>1.12</b></span><span><i style="background:#7a5bbd"></i>verify <b>2.35</b></span></div>
+  <svg class="bar" viewBox="0 0 100 30" preserveAspectRatio="none" height="30"><rect x="0%" y="0" width="66.22998544395924%" height="30" fill="#c9922e"><title>detect: 9.1</title></rect><rect x="66.22998544395924%" y="0" width="12.081513828238718%" height="30" fill="#b4574a"><title>redact: 1.66</title></rect><rect x="78.31149927219795%" y="0" width="21.688500727802037%" height="30" fill="#7a5bbd"><title>verify: 2.98</title></rect></svg>
+  <div class="legend"><span><i style="background:#c9922e"></i>detect <b>9.1</b></span><span><i style="background:#b4574a"></i>redact <b>1.66</b></span><span><i style="background:#7a5bbd"></i>verify <b>2.98</b></span></div>
   <p style="margin:16px 0 0;font-size:14px">
-    <b>7.92 ms</b> total.
+    <b>13.74 ms</b> total.
     For comparison, one network round trip to a server is typically 30–300 ms — which is why
     the largest latency win is not making the pipeline faster, but not using the network at all.
   </p>

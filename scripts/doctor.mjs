@@ -142,11 +142,11 @@ if (health) {
     );
   }
 } else {
-  bad("agent server is not running — any task needing the server will fail", "npm run server   (leave it running in its own terminal)");
+  bad("agent server is not running — any task needing the server will fail", "npm start   (starts both servers; leave that terminal open)");
 }
 
 if (await reach("http://127.0.0.1:8788/job-form.html")) ok("demo pages are being served");
-else bad("demo pages are not being served — the demo URLs will not load", "npm run demo   (leave it running in its own terminal)");
+else bad("demo pages are not being served — the demo URLs will not load", "npm start   (starts both servers; leave that terminal open)");
 
 // ── 5 · optional model ─────────────────────────────────────────────────────
 head("Open-weights model (optional)");

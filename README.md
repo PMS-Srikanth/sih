@@ -24,22 +24,27 @@ npm run setup
 ```
 
 `npm run setup` installs, builds, checks its own work, runs the evaluation and writes
-the report. It then prints the three things a script cannot do for you. Do those:
-
-**1 · Start the two servers**, each in its own terminal, and leave them running.
+the report. Then start it:
 
 ```bash
-npm run server     # http://127.0.0.1:8787   the reasoning server
-npm run demo       # http://127.0.0.1:8788   the demo pages
+npm start
 ```
 
-**2 · Load the extension.** `chrome://extensions` → Developer mode → **Load unpacked** →
-select the **`dist`** folder inside the repo.
+That runs the agent server and the demo pages together and prints the URLs. Leave the
+terminal open; Ctrl+C stops both. If a port is already in use it works out whether the
+thing holding it is ours — and just uses it — or something else, which it names.
 
-**3 · Create your vault.** Open the side panel, expand **My data**, choose a passphrase
-and fill in a few fields.
+Two things a script cannot do for you:
 
-Then open <http://127.0.0.1:8788/> and pick a page.
+**1 · Load the extension.** `chrome://extensions` → Developer mode → **Load unpacked** →
+select the **`dist`** folder inside the repo. Not the repo root, not `extension/`.
+
+**2 · Create your vault.** Open the side panel, expand **My data**, choose a passphrase
+and fill in a few fields. It is encrypted on your own machine and deliberately not in
+git, so every teammate does this once.
+
+Then open <http://127.0.0.1:8788/> and pick a page — including `report.html`, which is
+the evaluation metrics rendered as charts rather than terminal output.
 
 ### If something does not work
 

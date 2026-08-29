@@ -19,7 +19,8 @@
     "doctor": "node scripts/doctor.mjs",
     "report": "node scripts/build-report.mjs",
     "check-escapes": "node scripts/check-escapes.mjs",
-    "setup": "node scripts/setup.mjs"
+    "setup": "node scripts/setup.mjs",
+    "start": "node scripts/start.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",
