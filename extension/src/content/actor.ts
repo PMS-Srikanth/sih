@@ -205,13 +205,37 @@ function say(verb: string, detail: string, tone: string): void {
   caption.append(tag, txt);
 }
 
-/** Keep the caption beside the target and inside the viewport. */
+/**
+ * Keep the caption beside the target and inside the viewport.
+ *
+ * Placed to the SIDE by preference, not above. A form field almost always has
+ * its own label directly above it, and the first version covered exactly that
+ * label — hiding the one piece of context that makes the caption meaningful.
+ * Above and below are fallbacks for when neither side has room.
+ */
 function placeCaption(r: DOMRect): void {
   if (!caption) return;
   const cw = Math.min(340, caption.offsetWidth || 240);
-  const above = r.top > 54;
-  let x = r.left;
-  if (x + cw > window.innerWidth - 10) x = window.innerWidth - cw - 10;
-  caption.style.left = `${Math.max(10, x)}px`;
-  caption.style.top = above ? `${r.top - 42}px` : `${r.bottom + 10}px`;
+  const ch = caption.offsetHeight || 34;
+  const gap = 12;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+
+  let x: number;
+  let y = r.top + r.height / 2 - ch / 2;
+
+  if (r.right + gap + cw <= vw - 8) {
+    x = r.right + gap;                   // to the right
+  } else if (r.left - gap - cw >= 8) {
+    x = r.left - gap - cw;               // to the left
+  } else if (r.top - gap - ch >= 8) {
+    x = Math.min(r.left, vw - cw - 8);   // above, and accept covering the label
+    y = r.top - gap - ch;
+  } else {
+    x = Math.min(r.left, vw - cw - 8);   // below
+    y = r.bottom + gap;
+  }
+
+  caption.style.left = `${Math.max(8, Math.min(x, vw - cw - 8))}px`;
+  caption.style.top = `${Math.max(8, Math.min(y, vh - ch - 8))}px`;
 }

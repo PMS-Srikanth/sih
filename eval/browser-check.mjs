@@ -1,15 +1,15 @@
 /**
- * Loads the built extension into a real Chrome and drives it.
+ * Loads the built extension into a real browser and drives it.
  *
  *   npm run browser-check
  *
  * Everything else in eval/ runs the logic with the browser absent. That leaves
  * the half of this project that only exists in a browser — the service worker,
  * the content script, the shadow-root overlays, the side panel — verified only
- * by "it compiled". This closes that gap: real Chrome, real extension, real
+ * by "it compiled". This closes that gap: real browser, real extension, real
  * page, real messages across the real boundaries.
  *
- * It needs Chrome installed and the extension built (`npm run build`). It starts
+ * It needs Edge or Chrome installed and the extension built (`npm run build`). It starts
  * the demo page server and the agent server itself.
  *
  * Headful by default because an extension service worker is more reliable that
@@ -26,11 +26,27 @@ const KEEP = process.argv.includes("--keep");
 const SHOTS = path.resolve("eval/screenshots");
 const DIST = path.resolve("dist");
 
-const CHROME_CANDIDATES = [
-  "C:/Program Files/Google/Chrome/Application/chrome.exe",
-  "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe",
-  "/usr/bin/google-chrome",
-  "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+/**
+ * Which browser to drive.
+ *
+ * Edge comes first, and that is not a preference — Chrome 137 removed the
+ * --load-extension switch, so Chrome 138+ cannot load an unpacked extension for
+ * automation at all. The usual answer is Chrome for Testing, which this machine's
+ * Application Control policy refuses to execute. Edge is the same Chromium with
+ * the same chrome.* extension APIs and still accepts the switch, so it is what
+ * actually exercises the code. Chrome entries stay as fallbacks for machines
+ * running an older build or a permitted Chrome for Testing.
+ */
+const BROWSER_CANDIDATES = [
+  ["Edge", "C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe"],
+  ["Edge", "C:/Program Files/Microsoft/Edge/Application/msedge.exe"],
+  ["Chrome for Testing", "chrome/win64-152.0.7977.64/chrome-win64/chrome.exe"],
+  ["Chrome", "C:/Program Files/Google/Chrome/Application/chrome.exe"],
+  ["Chrome", "C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"],
+  ["Chromium", "/usr/bin/chromium"],
+  ["Chrome", "/usr/bin/google-chrome"],
+  ["Edge", "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge"],
+  ["Chrome", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"],
 ];
 
 let pass = 0;
@@ -47,11 +63,12 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── preflight ──────────────────────────────────────────────────────────────
 
-const chromePath = CHROME_CANDIDATES.find((p) => existsSync(p));
-if (!chromePath) {
-  console.log("\n  No Chrome found. Install it, or set one of the paths in this file.\n");
+const found = BROWSER_CANDIDATES.map(([n, b]) => [n, path.resolve(b)]).find(([, b]) => existsSync(b));
+if (!found) {
+  console.log("\n  No Chromium-based browser found. Install Edge or Chrome.\n");
   process.exit(1);
 }
+const [browserName, chromePath] = found;
 if (!existsSync(path.join(DIST, "manifest.json"))) {
   console.log("\n  dist/manifest.json is missing. Run `npm run build` first.\n");
   process.exit(1);
@@ -59,8 +76,9 @@ if (!existsSync(path.join(DIST, "manifest.json"))) {
 
 await mkdir(SHOTS, { recursive: true });
 
-console.log(`\n  Browser check — real Chrome, real extension\n`);
-note(`chrome  ${chromePath}`);
+console.log(`\n  Browser check — real browser, real extension\n`);
+note(`browser ${browserName}`);
+note(`binary  ${chromePath}`);
 note(`ext     ${DIST}`);
 console.log("");
 
@@ -96,6 +114,7 @@ const browser = await puppeteer.launch({
     "--no-first-run",
     "--no-default-browser-check",
     "--disable-features=DisableLoadExtensionCommandLineSwitch",
+    "--enable-unsafe-extension-debugging",
     "--window-size=1280,900",
   ],
 });
@@ -103,11 +122,15 @@ const browser = await puppeteer.launch({
 // Console errors anywhere in the extension are failures, not noise. A panel
 // that throws while rendering still "builds" — this is how we find that out.
 const pageErrors = [];
+const missing = [];
 const watch = (target, label) => {
   target.on?.("console", (m) => {
     if (m.type() === "error") pageErrors.push(`${label}: ${m.text()}`);
   });
   target.on?.("pageerror", (e) => pageErrors.push(`${label}: ${e.message}`));
+  target.on?.("response", (r) => {
+    if (r.status() === 404 && !/favicon/i.test(r.url())) missing.push(r.url());
+  });
 };
 
 try {
@@ -208,31 +231,41 @@ try {
   await page.screenshot({ path: path.join(SHOTS, "01-agent-in-action.png") });
 
   // ── the redaction overlay and the view switch ────────────────────────────
-  const overlayCount = async () =>
-    page.evaluate(() => {
-      const host = document.getElementById("__cordon_overlay__");
-      return host?.shadowRoot?.querySelectorAll(".b,.t,.redact,.fill,.hl").length ?? 0;
-    });
+  // The overlay lives in a CLOSED shadow root, on purpose: a page must not be
+  // able to read what the extension is drawing over it. So this cannot count
+  // boxes from the page — it compares what the screen actually looks like in
+  // each view, which is the property that matters anyway.
+  const hostBox = await page.evaluate(() => {
+    const h = document.getElementById("__cordon_overlay__");
+    if (!h) return null;
+    const cs = getComputedStyle(h);
+    return { pointerEvents: cs.pointerEvents, sealed: h.shadowRoot === null };
+  });
+  check("the overlay host is attached to the page", hostBox !== null);
+  check("its shadow root is closed to the page", hostBox?.sealed === true,
+    "a page must not be able to read what we draw over it");
+  check("the overlay cannot intercept a click", hostBox?.pointerEvents === "none", hostBox?.pointerEvents);
 
-  check("the server's view paints the ScreenGraph overlay", (await overlayCount()) > 0,
-    `${await overlayCount()} boxes`);
-  await page.screenshot({ path: path.join(SHOTS, "02-server-view.png") });
+  const shotServer = await page.screenshot({ path: path.join(SHOTS, "02-server-view.png") });
 
   await swTarget.evaluate(async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     await chrome.tabs.sendMessage(tab.id, { kind: "setView", view: "user" });
   });
-  await sleep(200);
-  check("switching to your view clears every box", (await overlayCount()) === 0);
-  await page.screenshot({ path: path.join(SHOTS, "03-user-view.png") });
+  await sleep(400);
+  const shotUser = await page.screenshot({ path: path.join(SHOTS, "03-user-view.png") });
+
+  check("the two views actually look different", !shotServer.equals(shotUser),
+    `${shotServer.length} vs ${shotUser.length} bytes`);
 
   await swTarget.evaluate(async () => {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     await chrome.tabs.sendMessage(tab.id, { kind: "perceive", mode: "balanced" });
     await chrome.tabs.sendMessage(tab.id, { kind: "setView", view: "server" });
   });
-  await sleep(300);
-  check("switching back repaints them", (await overlayCount()) > 0);
+  await sleep(400);
+  const shotBack = await page.screenshot();
+  check("switching back repaints the overlay", !shotBack.equals(shotUser));
 
   // ── the demo page's own buttons ──────────────────────────────────────────
   await page.evaluate(() => {
@@ -325,8 +358,13 @@ try {
   // ── nothing threw anywhere ───────────────────────────────────────────────
   // Extension pages log benign noise on shutdown; only count real errors.
   const real = pageErrors.filter(
-    (e) => !/Extension context invalidated|message port closed|Receiving end does not exist|favicon/i.test(e),
+    (e) =>
+      !/Extension context invalidated|message port closed|Receiving end does not exist|favicon/i.test(e) &&
+      // A bare "Failed to load resource" names nothing; the response listener
+      // above already reports any 404 that is not the demo server's favicon.
+      !/Failed to load resource/i.test(e),
   );
+  check("nothing 404s except the demo favicon", missing.length === 0, missing.slice(0, 3).join(" | "));
   check("no uncaught errors in any extension context", real.length === 0,
     real.length ? real.slice(0, 3).join(" | ") : "clean");
   if (real.length > 3) note(`...and ${real.length - 3} more`);

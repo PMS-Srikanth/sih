@@ -113,9 +113,11 @@ went. The animation time is listed separately and excluded from every figure.
 **7 · Prove it without the browser.**
 
 ```bash
-npm run eval        # PII precision/recall, redaction, verifier, router
-npm run vlm-check   # the open-weights server path, end to end
-npm run model-check # the ONNX model loads and its shapes match
+npm run eval          # PII precision/recall, redaction, verifier, router
+npm run vlm-check     # the open-weights server path, against a mock endpoint
+npm run model-check   # the ONNX model loads and its shapes match
+npm run browser-check # the extension in a real browser — 36 assertions
+npm run live-model    # against a real model (needs: ollama pull qwen2.5:3b)
 ```
 
 **If the server is down**, the demo still runs — the planner falls back to rules,

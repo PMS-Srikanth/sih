@@ -1,6 +1,6 @@
 # Cordon — Build Tracker
 
-**Living document. Updated on every change.** Last updated: 2026-08-29, build `07:10`.
+**Living document. Updated on every change.** Last updated: 2026-08-29, build `07:55`.
 
 The rule for this file: nothing is marked ✅ unless it runs and there is a way to check it.
 Aspirations live in the roadmap, not in the status column.
@@ -11,8 +11,8 @@ Aspirations live in the roadmap, not in the status column.
 
 | PS requirement | Status | Where / evidence |
 |---|---|---|
-| Client-side extension, **Chrome** | ✅ | `dist/` loads unpacked, tested |
-| Client-side extension, **Firefox** | ⚠️ | `manifest.firefox.json` builds; **never loaded once** |
+| Client-side extension, **Chromium** | ✅ | Loads and runs; `npm run browser-check` drives it in a real browser, 36/36 |
+| Client-side extension, **Firefox** | ➖ | Out of scope by decision. `manifest.firefox.json` still builds |
 | Local **ViT or equivalent CV model** reads the screen | ✅ | UltraFace RFB-320 (1.2 MB) always; `Xenova/vit-base-patch16-224` in Thorough mode |
 | ...running **via WebGPU** | ✅ | ORT `executionProviders: ["webgpu"]`, WASM+SIMD fallback |
 | ...and **takes decision based on that** | ✅ | `agent/router.ts` — local-first; server only on escalation |
@@ -23,8 +23,8 @@ Aspirations live in the roadmap, not in the status column.
 | Only **anonymized, unidentifiable** data transmitted | ✅ | V1–V6; payload inspector shows the literal bytes |
 | Server **aware of the redaction scheme** | ✅ | `cordon/redaction@1` handle grammar in the system prompt |
 | Server returns **data or a UI action** | ✅ | 4 response types: action / plan / data / ask_user |
-| Server model: **offline-deployable open-weights** | ⚠️ | `server/vlm.mjs` speaks the OpenAI-compatible API (vLLM / Ollama / llama.cpp). `npm run vlm-check` proves the path end to end against a mock endpoint, 24/24. **Not yet run against a real model** |
-| **End-to-end task** demonstrated | ⚠️ | Works on demo pages; not yet on a real third-party site |
+| Server model: **offline-deployable open-weights** | ✅ | qwen2.5:3b via Ollama drives the agent correctly. `npm run live-model` — 14/14, stable over three runs |
+| **End-to-end task** demonstrated | ⚠️ | Verified in a real browser on the demo pages; not yet on a real third-party site |
 | Balance **latency vs accuracy** | ✅ | Fast / Balanced / Thorough change real behaviour |
 
 ### Evaluation metrics
@@ -97,9 +97,8 @@ full pipeline; that is the premise, not a limitation to work around.
 - ✅ Speaks `cordon/redaction@1`, handles only
 - ✅ Output guard rejects literal PII
 - ✅ 4 response types
-- ⚠️ Open-weights VLM — `vlm.mjs` against the OpenAI-compatible API; set `CORDON_VLM_URL`
-  to point at Ollama or vLLM. `npm run vlm-check` verifies the whole path against a mock
-  endpoint (24/24). Never run against a live model
+- ✅ Open-weights VLM — qwen2.5:3b through Ollama, `npm run live-model` 14/14
+- ✅ System prompt in `server/prompt.mjs`, shaped by what a real model got wrong
 - ✅ Asks the user about blank fields nothing can fill, at most once per field
 - ❌ Guided JSON decoding
 
@@ -125,7 +124,9 @@ full pipeline; that is the premise, not a limitation to work around.
 |---|---|
 | `npm run eval` | PII P/R, checksums, redaction, verifier, coverage map, encryption, router, visual PII |
 | `npm run model-check` | ONNX model loads, output shapes match post-processing |
-| `npm run vlm-check` | The open-weights path end to end — request shape, prompt, parsing, dispatch, guard, fallback |
+| `npm run vlm-check` | The open-weights path end to end against a mock endpoint — no model needed |
+| `npm run live-model` | The same path against a **real** model. Needs `ollama pull qwen2.5:3b` |
+| `npm run browser-check` | The extension in a real browser: service worker, content script, visualiser, overlay, panel, a whole task |
 | `npm run typecheck` | Whole codebase |
 
 Current: **all green.**
@@ -136,6 +137,9 @@ Current: **all green.**
 
 | Date | Change | Why |
 |---|---|---|
+| 08-29 | Browser check — 36 assertions in a real browser | Half this project only exists in a browser and was verified by "it compiled" |
+| 08-29 | Live model run, and the prompt rewrite it forced | A real 3B model asked for a name it had a handle for; a glossary is not a decision procedure |
+| 08-29 | Caption placed beside the field, not above it | It covered the field's own label — the context that makes it meaningful |
 | 08-29 | Demo pages actually work | Buttons only raised a toast; you could not tell a real fill from a click |
 | 08-29 | Stop clears the confirmation | Panel stayed stuck on a question about a dead run |
 | 08-29 | `waitForConfirm` settles the prior wait | Overwriting the resolver stranded the awaiting step forever |
@@ -167,12 +171,8 @@ Current: **all green.**
 
 ## 6. Next, in order
 
-1. **Run the VLM once.** The code is written and falls back cleanly; what is missing is
-   evidence it has ever produced a correct action against a real model. `ollama pull
-   qwen2.5:7b`, set `CORDON_VLM_URL`, and watch one task through. Until that happens this
-   row is a claim, not a result.
-2. **Labelled eval set for metric 1** — 40–60 pages with ground-truth boxes and roles.
-   25% of the marks currently has no number attached to it.
-3. **Local NER** — the third detector, for names in prose.
-4. **Firefox** — load it once and find out what breaks.
-5. **Delta re-perception** — observers instead of full re-scan each step.
+1. **A labelled eval set for metric 1.** 25% of the marks still has no number attached.
+   40–60 pages with ground-truth boxes and roles.
+2. **Local NER** — the third detector, for names in prose.
+3. **A real third-party site** — the demo pages are ours, and that is a real caveat.
+4. **Delta re-perception** — observers instead of full re-scan each step.
