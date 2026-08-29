@@ -17,7 +17,9 @@
     "browser-check": "node eval/browser-check.mjs",
     "live-model": "node eval/live-model-check.mjs",
     "doctor": "node scripts/doctor.mjs",
-    "report": "node scripts/build-report.mjs"
+    "report": "node scripts/build-report.mjs",
+    "check-escapes": "node scripts/check-escapes.mjs",
+    "setup": "node scripts/setup.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",

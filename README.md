@@ -14,21 +14,43 @@ The server reasons about the page without ever receiving a pixel, a password, or
 
 ## Run it
 
-You need Node 20+. Nothing else — no Python, no GPU, no API key.
+You need **Node 20+** and Chrome or Edge. Nothing else — no Python, no GPU, no API key.
+(Python is only for rebuilding the slide deck; see `requirements.txt`.)
 
 ```bash
-npm install
-npm run build          # → dist/
+git clone https://github.com/PMS-Srikanth/sih.git
+cd sih
+npm run setup
 ```
 
-Then, in two more terminals:
+`npm run setup` installs, builds, checks its own work, runs the evaluation and writes
+the report. It then prints the three things a script cannot do for you. Do those:
+
+**1 · Start the two servers**, each in its own terminal, and leave them running.
 
 ```bash
-npm run server         # → http://127.0.0.1:8787/agent
-npm run demo           # → http://127.0.0.1:8788/
+npm run server     # http://127.0.0.1:8787   the reasoning server
+npm run demo       # http://127.0.0.1:8788   the demo pages
 ```
 
-Then load it: `chrome://extensions` → Developer mode → **Load unpacked** → select **`dist/`**.
+**2 · Load the extension.** `chrome://extensions` → Developer mode → **Load unpacked** →
+select the **`dist`** folder inside the repo.
+
+**3 · Create your vault.** Open the side panel, expand **My data**, choose a passphrase
+and fill in a few fields.
+
+Then open <http://127.0.0.1:8788/> and pick a page.
+
+### If something does not work
+
+```bash
+npm run doctor
+```
+
+It inspects your machine and names the cause with the command that fixes it — no build,
+a build older than the source, servers down, missing models, no browser. It changes
+nothing. **Send its output** if you are asking someone else for help; "it doesn't work"
+is not something anyone can act on.
 
 ### Three things that catch everyone
 
@@ -138,7 +160,9 @@ went. The animation time is listed separately and excluded from every figure.
 npm run eval          # PII precision/recall, redaction, verifier, router
 npm run vlm-check     # the open-weights server path, against a mock endpoint
 npm run model-check   # the ONNX model loads and its shapes match
-npm run browser-check # the extension in a real browser — 36 assertions
+npm run browser-check # the extension in a real browser — 53 assertions
+npm run check-escapes # regexes whose backslashes were eaten by a shell edit
+npm run report        # regenerate demo-pages/report.html from the last eval
 npm run live-model    # against a real model (needs: ollama pull qwen2.5:3b)
 ```
 

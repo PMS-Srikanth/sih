@@ -48,7 +48,16 @@ modesEl.addEventListener("click", (e) => {
 
 runEl.addEventListener("click", () => {
   if (running) {
-    chrome.runtime.sendMessage({ kind: "stop" });
+    // Reflect the stop immediately rather than waiting for a push that may not
+    // come, then confirm against the worker. A Stop button that still says
+    // "Stop" afterwards is the same complaint as a dead Approve button.
+    running = false;
+    runEl.textContent = "Run";
+    runEl.classList.remove("stop");
+    chrome.runtime.sendMessage({ kind: "stop" }, () => {
+      void chrome.runtime.lastError;
+      resync();
+    });
     return;
   }
   const task = taskEl.value.trim();
@@ -267,7 +276,35 @@ chrome.runtime.onMessage.addListener((msg: { kind: string; state: AgentState }) 
   if (msg?.kind === "state") safeRender(msg.state);
 });
 
-chrome.runtime.sendMessage({ kind: "getState" }, (s: AgentState) => s && safeRender(s));
+/** Pull the truth from the service worker and render it. */
+function resync(): void {
+  chrome.runtime.sendMessage({ kind: "getState" }, (s: AgentState) => {
+    if (chrome.runtime.lastError) return; // worker asleep; the poll will retry
+    if (s) safeRender(s);
+  });
+}
+
+resync();
+
+/**
+ * The panel is normally driven by pushes from the service worker. That is fine
+ * until one does not arrive — an MV3 worker can be evicted mid-run, and a push
+ * sent while the panel is closed is simply lost. Either leaves the UI showing a
+ * run that is no longer happening, with the button still reading "Stop" and no
+ * way to start another.
+ *
+ * So the panel also pulls, once a second while it believes a run is active. It
+ * is a single message to a worker that is already awake, and it makes the UI
+ * self-correcting rather than dependent on every push landing.
+ */
+setInterval(() => {
+  if (running) resync();
+}, 1000);
+
+// A panel that has just been reopened must not trust whatever it rendered last.
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) resync();
+});
 
 /** A render bug must never leave the panel silently blank. */
 function safeRender(s: AgentState): void {
@@ -520,7 +557,7 @@ function drawResources(s: AgentState): void {
   } else {
     for (const m of models) {
       const row = document.createElement("div");
-      row.className = "mrow " + m.state.replace(/s+/g, "-");
+      row.className = "mrow " + m.state.replace(/\s+/g, "-");
       row.append(
         el("span", "mdot", ""),
         el("span", "mname", m.name),

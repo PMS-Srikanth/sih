@@ -201,8 +201,8 @@
     const d = read();
     const missing = [];
     if (!d.name.trim()) missing.push("Full name");
-    if (!/^[^@s]+@[^@s]+.[a-z]{2,}$/i.test(d.email)) missing.push("a valid email");
-    if (!/^d{10}$/.test((d.mobile || "").replace(/D/g, ""))) missing.push("a 10-digit mobile");
+    if (!/^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(d.email)) missing.push("a valid email");
+    if (!/^\d{10}$/.test((d.mobile || "").replace(/\D/g, ""))) missing.push("a 10-digit mobile");
     if (!el("pw").value) missing.push("a password");
     if (!d.years) missing.push("Years of experience");
     if (missing.length) {

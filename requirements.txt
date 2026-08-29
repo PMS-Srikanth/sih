@@ -1,7 +1,12 @@
 # Cordon — Python dependencies
 #
-# Cordon itself is a TypeScript/Node project; the runtime dependencies for the
-# extension and the server live in package.json (`npm install`).
+# Nothing in this file is needed to RUN Cordon. If you are here to get the
+# extension working, you want:
+#
+#     npm run setup
+#
+# Cordon is a TypeScript/Node project; everything it actually needs is in
+# package.json. Python is used only to rebuild the presentation artefacts.
 #
 # Python is used only for the presentation toolchain:
 #   python -m pip install -r requirements.txt

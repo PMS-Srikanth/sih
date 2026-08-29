@@ -464,6 +464,15 @@ try {
   await sleep(900);
   const stopped = await panel.evaluate(() => chrome.runtime.sendMessage({ kind: "getState" }));
   check("Stop ends the run", stopped?.running === false, `running=${stopped?.running}`);
+
+  // The complaint was about the BUTTON, not the state: it kept saying "Stop"
+  // with nothing left to stop. Assert what a person actually sees.
+  const runBtn = await panel.evaluate(() => ({
+    text: document.getElementById("run")?.textContent?.trim(),
+    stopStyled: document.getElementById("run")?.classList.contains("stop"),
+  }));
+  check("the button goes back to saying Run", runBtn.text === "Run", JSON.stringify(runBtn.text));
+  check("and loses its stop styling", runBtn.stopStyled === false);
   check("Stop also clears any open confirmation", !stopped?.awaitingConfirm);
 
   // "remove" is what people type when they mean "empty this form".
@@ -487,6 +496,32 @@ try {
   check('"remove" empties the pre-existing data', leftover.length === 0,
     leftover.length ? `still set: ${leftover.join(", ")}` : "all cleared");
 
+
+  // ── the demo forms accept valid input ────────────────────────────────────
+  for (const [file, emailId, submitId, fill] of [
+    ["job-form.html", "email", "register", { name: "Srikar Gautam", mobile: "9876543210", pw: "Hunter2!Secret" }],
+    ["application.html", "email", "submit", { fullname: "Srikar Gautam", phone: "9876543210", summary: "Built things." }],
+  ]) {
+    const f = await browser.newPage();
+    await f.goto(`http://127.0.0.1:8788/${file}`, { waitUntil: "domcontentloaded" });
+    await sleep(250);
+    await f.evaluate((emailId, fill) => {
+      const set = (id, v) => { const n = document.getElementById(id); if (n) n.value = v; };
+      set(emailId, "srikarsrikanth09@gmail.com");
+      for (const [k, v] of Object.entries(fill)) set(k, v);
+      const years = document.getElementById("years");
+      if (years && years.options?.length > 1) years.value = years.options[1].value;
+    }, emailId, fill);
+    await f.click(`#${submitId}`);
+    await sleep(400);
+    const res = await f.evaluate(() => ({
+      accepted: Boolean(document.getElementById("receipt")),
+      banner: document.getElementById("banner")?.textContent ?? "",
+    }));
+    check(`${file} accepts a valid email and phone`, res.accepted === true,
+      res.accepted ? "submitted" : res.banner.slice(0, 80));
+    await f.close();
+  }
 
   // ── nothing threw anywhere ───────────────────────────────────────────────
   // Extension pages log benign noise on shutdown; only count real errors.
