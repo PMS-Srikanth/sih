@@ -40,10 +40,10 @@ chrome.runtime.onMessage.addListener((msg: ContentRequest | OverlayRequest, _s, 
           // The overlay is pointer-events:none, so it never intercepts the click.
           // Leaving it up means a human can actually watch what the agent is
           // doing instead of seeing it flash past.
-          const out = await execute(msg.action, msg.resolved, msg.expectSig);
+          const out = await execute(msg.action, msg.resolved, msg.expectSig, msg.showAgent !== false);
           send(out.ok
-            ? { ok: true, executed: true, note: out.note, postSig: out.postSig, ingest: out.ingest }
-            : { ok: false, error: out.note ?? "failed", ingest: out.ingest });
+            ? { ok: true, executed: true, note: out.note, postSig: out.postSig, ingest: out.ingest, visualMs: out.visualMs }
+            : { ok: false, error: out.note ?? "failed", ingest: out.ingest, visualMs: out.visualMs });
           return;
         }
 

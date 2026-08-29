@@ -517,6 +517,12 @@ function drawResources(s: AgentState): void {
     tbar.append(el("i", "empty-seg", ""));
   }
 
+  // Stated openly rather than folded into the bar: the visualiser slows the run
+  // down on purpose, and that time is excluded from every figure above.
+  if (tm?.visual) {
+    tkey.append(el("span", "tki muted", "+ " + tm.visual + "ms animation, excluded"));
+  }
+
   // Whole-run split. This is the headline privacy-and-cost number: how much of
   // the task never needed the network at all.
   const localN = s.steps.filter((x) => x.route === "local" || x.route === "done").length;
@@ -669,7 +675,7 @@ function timingBars(t: StageTimings): HTMLElement {
   legend.style.marginTop = "5px";
 
   for (const [k, label, color] of STAGES) {
-    const v = t[k];
+    const v = t[k] ?? 0;
     if (v <= 0) continue;
     const i = document.createElement("i");
     i.style.cssText = `flex:${v / total};background:${color}`;

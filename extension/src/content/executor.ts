@@ -7,12 +7,14 @@
  */
 import type { AgentAction, RawElement } from "@/shared/types";
 import { signature } from "@/perception/dom-graph";
-import { actorAct, actorMoveTo, actorResult } from "./actor";
+import { actorAct, actorMoveTo, actorResult, setActorEnabled, takeVisualMs } from "./actor";
 
 export interface ExecOutcome {
   ok: boolean;
   note?: string;
   postSig?: string;
+  /** Milliseconds of deliberate animation, so the caller can subtract it. */
+  visualMs?: number;
   /**
    * Post-condition for a fill: the field was read back and compared with what
    * we intended to type. Only the VERDICT travels — never the value, and never
@@ -40,7 +42,21 @@ export function lookup(id: string): Element | undefined {
   return registry.get(id);
 }
 
-export async function execute(action: AgentAction, resolved?: string, expectSig?: string): Promise<ExecOutcome> {
+export async function execute(
+  action: AgentAction,
+  resolved?: string,
+  expectSig?: string,
+  showAgent = true,
+): Promise<ExecOutcome> {
+  // Fast mode promises the lowest latency it can manage, so it does not pay for
+  // a visualisation nobody asked it to draw.
+  setActorEnabled(showAgent);
+  takeVisualMs(); // discard anything left over from a previous action
+  const out = await run(action, resolved, expectSig);
+  return { ...out, visualMs: takeVisualMs() };
+}
+
+async function run(action: AgentAction, resolved?: string, expectSig?: string): Promise<ExecOutcome> {
   if (action.kind === "wait") {
     await sleep(Number(action.value) || 400);
     return { ok: true, note: "waited" };

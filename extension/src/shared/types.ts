@@ -205,6 +205,12 @@ export type ServerResponse =
 export type Mode = "fast" | "balanced" | "thorough";
 
 export interface StageTimings {
+  /**
+   * Deliberate animation inside the execute stage, already SUBTRACTED from it.
+   * Reported separately so the visualiser cannot quietly inflate the latency
+   * figure the problem statement grades.
+   */
+  visual?: number;
   capture: number;
   perceive: number;
   detect: number;
@@ -283,7 +289,7 @@ export interface EnteredValue {
 
 export type ContentRequest =
   | { kind: "perceive"; mode: Mode }
-  | { kind: "execute"; action: AgentAction; resolved?: string; expectSig?: string }
+  | { kind: "execute"; action: AgentAction; resolved?: string; expectSig?: string; showAgent?: boolean }
   | { kind: "highlight"; ids: string[] }
   | { kind: "clearHighlight" }
   | { kind: "ping" };
@@ -298,9 +304,9 @@ export interface IngestCheck {
 
 export type ContentResponse =
   | { ok: true; graph: RawScreenGraph }
-  | { ok: true; executed: true; note?: string; postSig?: string; ingest?: IngestCheck }
+  | { ok: true; executed: true; note?: string; postSig?: string; ingest?: IngestCheck; visualMs?: number }
   | { ok: true }
-  | { ok: false; error: string; ingest?: IngestCheck };
+  | { ok: false; error: string; ingest?: IngestCheck; visualMs?: number };
 
 export type PanelMessage =
   | { kind: "run"; task: string; mode: Mode }
