@@ -418,6 +418,76 @@ try {
     `${netUi.rows} row(s), "${netUi.summary}"`);
   await panel.screenshot({ path: path.join(SHOTS, "06-network-traffic.png"), fullPage: true });
 
+  // ── the buttons that were reported dead ──────────────────────────────────
+  // Approve, Decline and Stop were reported unresponsive. They were wired
+  // correctly; what was broken is that a locked vault made the planner ask
+  // about every identity field in turn, so each answer was replaced by a
+  // near-identical question and the panel looked frozen. These assert the
+  // observable behaviour rather than the wiring.
+  await page.bringToFront();
+  await page.evaluate(() => {
+    for (const id of ["name", "email", "mobile", "birth", "addr", "pannum", "uid", "vpa"]) {
+      const n = document.getElementById(id);
+      if (n) n.value = "";
+    }
+  });
+
+  await panel.evaluate(() =>
+    chrome.runtime.sendMessage({ kind: "run", task: "fill this form and register", mode: "balanced" }),
+  );
+
+  let prompt = null;
+  for (let i = 0; i < 50; i++) {
+    prompt = await panel.evaluate(() => chrome.runtime.sendMessage({ kind: "getState" }));
+    if (prompt?.awaitingConfirm || !prompt?.running) break;
+    await sleep(300);
+  }
+
+  if (prompt?.awaitingConfirm) {
+    const firstWhy = prompt.awaitingConfirm.why;
+    check("a run with a locked vault stops instead of interrogating field by field", false,
+      "expected the locked-vault message, got a prompt");
+    note(`prompt was: ${String(firstWhy).slice(0, 70)}`);
+  } else {
+    const msg = String(prompt?.error ?? "");
+    check("a locked vault is reported once, not asked about per field",
+      /locked/i.test(msg), msg.slice(0, 80));
+  }
+
+  // Stop must end a run AND clear any prompt, from the real button.
+  await panel.evaluate(() =>
+    chrome.runtime.sendMessage({ kind: "run", task: "fill this form and register", mode: "balanced" }),
+  );
+  await sleep(900);
+  await panel.bringToFront();
+  await panel.click("#run").catch(() => {});
+  await sleep(900);
+  const stopped = await panel.evaluate(() => chrome.runtime.sendMessage({ kind: "getState" }));
+  check("Stop ends the run", stopped?.running === false, `running=${stopped?.running}`);
+  check("Stop also clears any open confirmation", !stopped?.awaitingConfirm);
+
+  // "remove" is what people type when they mean "empty this form".
+  await page.bringToFront();
+  await page.evaluate(() => {
+    document.getElementById("name").value = "Ada Sharma";
+    document.getElementById("email").value = "ada@example.in";
+    document.getElementById("mobile").value = "9845017632";
+  });
+  await panel.evaluate(() =>
+    chrome.runtime.sendMessage({ kind: "run", task: "remove all the data from this form", mode: "balanced" }),
+  );
+  for (let i = 0; i < 50; i++) {
+    const st = await panel.evaluate(() => chrome.runtime.sendMessage({ kind: "getState" }));
+    if (st && !st.running) break;
+    await sleep(300);
+  }
+  const leftover = await page.evaluate(() =>
+    ["name", "email", "mobile"].map((id) => document.getElementById(id)?.value ?? "").filter(Boolean),
+  );
+  check('"remove" empties the pre-existing data', leftover.length === 0,
+    leftover.length ? `still set: ${leftover.join(", ")}` : "all cleared");
+
+
   // ── nothing threw anywhere ───────────────────────────────────────────────
   // Extension pages log benign noise on shutdown; only count real errors.
   const real = pageErrors.filter(

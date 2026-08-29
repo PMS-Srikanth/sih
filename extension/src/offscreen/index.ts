@@ -54,10 +54,18 @@ export interface VisionReply {
   regions?: Array<{ x: number; y: number; w: number; h: number; score: number; cls: string; model: string }>;
   /** Peak offscreen memory usage in MB if available. */
   memoryMB?: number;
+  /**
+   * Which models are loaded right now, and their state. Surfaced because "is
+   * the ViT actually running?" was previously unanswerable from the UI — it is
+   * gated to Thorough mode and degrades silently when the weights are absent,
+   * which together look identical to it not existing.
+   */
+  models?: Array<{ name: string; state: "loaded" | "unavailable" | "not requested"; note?: string }>;
 }
 
 let vit: ImageClassificationPipeline | null = null;
 let vitLoadMs = 0;
+let vitError = "";
 
 const VIT_MAP: Record<string, string> = {
   "envelope": "document",
@@ -90,6 +98,7 @@ chrome.runtime.onMessage.addListener((msg: VisionRequest, _sender, respond) => {
           vitLoadMs = Math.round(performance.now() - tVit);
         } catch (e) {
           // A missing or corrupt bundle must not take the detector down with it.
+          vitError = e instanceof Error ? e.message : String(e);
           console.warn("[cordon] ViT unavailable, continuing with the detector only:", e);
           vit = null;
         }
@@ -188,6 +197,14 @@ chrome.runtime.onMessage.addListener((msg: VisionRequest, _sender, respond) => {
       }
 
       const mem = (performance as any).memory;
+      const models: NonNullable<VisionReply["models"]> = [
+        { name: "UltraFace RFB-320", state: "loaded", note: "1.2 MB face detector, every mode" },
+        vit
+          ? { name: "ViT base patch16-224", state: "loaded", note: "84 MB classifier, Thorough mode" }
+          : msg.useVit
+            ? { name: "ViT base patch16-224", state: "unavailable", note: vitError || "weights not bundled — run npm run fetch-models" }
+            : { name: "ViT base patch16-224", state: "not requested", note: "Thorough mode only" },
+      ];
 
       respond({
         ok: true,
@@ -195,6 +212,7 @@ chrome.runtime.onMessage.addListener((msg: VisionRequest, _sender, respond) => {
         regions: dedupeRegions(regions),
         inferMs: Math.round(inferMs * 100) / 100,
         passes,
+        models,
         memoryMB: mem ? Math.round(mem.usedJSHeapSize / 1048576) : undefined,
       } satisfies VisionReply);
     } catch (e) {

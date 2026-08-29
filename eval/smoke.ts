@@ -478,6 +478,7 @@ const ROUTER_CASES: Array<[string, "local" | "server", string?]> = [
 ];
 
 let routerFails = 0;
+const routerRows: Array<{ task: string; route: string; why: string; pass: boolean }> = [];
 for (const [task, want, wantAction] of ROUTER_CASES) {
   const d = route(navGraph, task, 0);
   const got = d.route === "done" ? "server" : d.route;
@@ -486,6 +487,7 @@ for (const [task, want, wantAction] of ROUTER_CASES) {
     pass = (d as any).action?.kind === wantAction;
   }
   if (!pass) routerFails++;
+  routerRows.push({ task, route: got, why: d.why, pass });
   console.log(
     `  ${pass ? "PASS" : "FAIL"}  ${got.toUpperCase().padEnd(7)} ${`"${task}"`.slice(0, 42).padEnd(44)} ${d.why}`,
   );
@@ -501,9 +503,40 @@ const ok = v.passed && fn === 0 && fp === 0 && routerFails === 0 && leaks.length
 
 import * as fs from "fs";
 const evalOutput = {
+  generatedAt: new Date().toISOString(),
   precision: parseFloat(precision.toFixed(3)),
   recall: parseFloat(recall.toFixed(3)),
   f1: parseFloat(f1.toFixed(3)),
+  confusion: { tp, fp, fn, tn },
+  misses,
+  falsePositives: falsePos,
+  /** What the fixture deliberately plants that must NOT be redacted. */
+  hardNegatives: [...EXPECT_SAFE],
+  expectedSensitive: [...EXPECT_SENSITIVE],
+  timings: {
+    detect: parseFloat(detectMs.toFixed(2)),
+    redact: parseFloat(redactMs.toFixed(2)),
+    verify: parseFloat(verifyMs.toFixed(2)),
+    elements: elements.length,
+  },
+  coverage: {
+    cols: cov.cols,
+    rows: cov.rows,
+    totalCells,
+    coveredCells,
+    explainedPct: Math.round((coveredCells / totalCells) * 100),
+    unexplainedRegions: unexplained.length,
+  },
+  verifier: {
+    passed: v.passed,
+    checks: v.checks.map((c) => ({ id: c.id, name: c.name, passed: c.passed, detail: c.detail })),
+    bytes: v.bytes,
+  },
+  router: {
+    rows: routerRows,
+    localCount: routerRows.filter((r) => r.route === "local").length,
+    total: routerRows.length,
+  },
   redaction: {
     dropped: stats.dropped,
     substituted: stats.substituted,

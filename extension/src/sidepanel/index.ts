@@ -33,7 +33,7 @@ let running = false;
 const HINTS: Record<Mode, string> = {
   fast: "Fast — DOM graph and pattern detection only. No vision. Lowest latency.",
   balanced: "Balanced — DOM graph, calibrated PII detection, vision on unexplained regions.",
-  thorough: "Thorough — full-frame sweep and OCR everywhere. Highest accuracy, highest cost.",
+  thorough: "Thorough — adds the 84 MB ViT classifier over the face detector. Highest accuracy, highest cost.",
 };
 
 // ── controls ───────────────────────────────────────────────────────────────
@@ -58,6 +58,8 @@ runEl.addEventListener("click", () => {
   }
   logEl.innerHTML = "";
   bannerEl.hidden = true;
+  promptSeq = 0;
+  lastPromptWhy = "";
   chrome.runtime.sendMessage({ kind: "run", task, mode });
 });
 
@@ -67,6 +69,10 @@ taskEl.addEventListener("keydown", (e) => {
 
 const cvalue = $<HTMLInputElement>("cvalue");
 
+/** Counts prompts within a run, so a new question reads as a NEW question. */
+let promptSeq = 0;
+let lastPromptWhy = "";
+
 function answer(approve: boolean): void {
   // The typed value goes back with the approval. For an action prompt it is the
   // corrected value; for a question it is the answer the agent had no way to
@@ -74,6 +80,22 @@ function answer(approve: boolean): void {
   const v = cvalue.value.trim();
   chrome.runtime.sendMessage({ kind: "confirm", approve, value: v || undefined });
   cvalue.value = "";
+
+  // Acknowledge the click immediately. The agent often has another question
+  // ready within a few hundred milliseconds, and a panel that swaps one question
+  // for a near-identical one with no transition is indistinguishable from a
+  // button that did nothing — which is exactly how this got reported.
+  const ap = $<HTMLButtonElement>("approve");
+  const de = $<HTMLButtonElement>("decline");
+  ap.disabled = true;
+  de.disabled = true;
+  $("confirmTitle").textContent = approve ? "Sent — working…" : "Declined — stopping…";
+  confirmEl.classList.add("acked");
+  setTimeout(() => {
+    ap.disabled = false;
+    de.disabled = false;
+    confirmEl.classList.remove("acked");
+  }, 450);
 }
 
 $("approve").addEventListener("click", () => answer(true));
@@ -426,7 +448,15 @@ function drawPrompt(p: AgentState["awaitingConfirm"]): void {
   if (!p) return;
 
   const question = p.kind === "question";
-  $("confirmTitle").textContent = question ? "The agent needs your input" : "Confirmation needed";
+
+  // Number them. Several questions in a row should read as progress, not as a
+  // panel that is stuck on the same one.
+  if (p.why !== lastPromptWhy) {
+    lastPromptWhy = p.why;
+    promptSeq++;
+  }
+  const base = question ? "The agent needs your input" : "Confirmation needed";
+  $("confirmTitle").textContent = promptSeq > 1 ? base + " · question " + promptSeq : base;
   confirmWhy.textContent = p.why;
 
   edit.hidden = !p.editable;
@@ -477,6 +507,28 @@ function drawResources(s: AgentState): void {
     $("rsum").textContent = `${gpu ? "GPU" : "CPU"} · ${Math.round(r.inferMs)} ms`;
   } else {
     $("rsum").textContent = "no model pass yet";
+  }
+
+  // Which models are actually live. Without this, a ViT that is gated to
+  // Thorough mode and degrades silently when its weights are absent is
+  // indistinguishable from one that was never built.
+  const mbox = $("models");
+  mbox.textContent = "";
+  const models = r?.models ?? [];
+  if (!models.length) {
+    mbox.append(el("p", "mnone", "No model has run yet. Run a task in Balanced or Thorough."));
+  } else {
+    for (const m of models) {
+      const row = document.createElement("div");
+      row.className = "mrow " + m.state.replace(/s+/g, "-");
+      row.append(
+        el("span", "mdot", ""),
+        el("span", "mname", m.name),
+        el("span", "mstate", m.state),
+      );
+      if (m.note) row.append(el("span", "mnote", m.note));
+      mbox.append(row);
+    }
   }
 
   // Stacked latency bar for the most recent step.

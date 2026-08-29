@@ -340,6 +340,8 @@ export interface ResourceSample {
   passes: number;
   /** Fraction of the frame the coverage map decided needed no model at all. */
   frameSkipped?: number;
+  /** Which models are live, so "is the ViT running?" is answerable from the UI. */
+  models?: Array<{ name: string; state: string; note?: string }>;
 }
 
 /**

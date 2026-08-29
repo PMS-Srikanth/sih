@@ -58,7 +58,7 @@ function plan(ctx) {
   }
 
   // 1.5 · A request to clear/reset the form
-  if (/\b(clear|empty|reset)\b/i.test(task)) {
+  if (/\b(clear|empty|reset|remove|delete|wipe|erase|blank)\b/i.test(task)) {
     return {
       type: "action",
       thought: "The user is asking to clear or reset the form fields.",

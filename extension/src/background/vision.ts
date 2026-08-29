@@ -17,6 +17,7 @@ export interface VisionResult {
   inferMs: number;
   passes: number;
   memoryMB?: number;
+  models?: Array<{ name: string; state: string; note?: string }>;
   error?: string;
 }
 
@@ -103,6 +104,7 @@ export async function detectRegions(cap: Capture, crops: BBox[], useVit = false)
       inferMs: reply.inferMs ?? 0,
       passes: reply.passes ?? 0,
       memoryMB: reply.memoryMB,
+      models: reply.models,
     };
   } catch (e) {
     return { ...empty, error: e instanceof Error ? e.message : String(e) };

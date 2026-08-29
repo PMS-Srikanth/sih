@@ -151,6 +151,7 @@ async function runTask(task: string, mode: Mode): Promise<void> {
   await chrome.storage.local.set({ mode });
   push();
 
+  let warnedLocked = false;
   let lastFingerprint = "";
   let stalled = 0;
 
@@ -271,6 +272,7 @@ async function runTask(task: string, mode: Mode): Promise<void> {
             inferMs: vision.inferMs,
             passes: vision.passes,
             frameSkipped: plan.coveragePct,
+            models: vision.models,
           };
 
           visionNote =
@@ -289,7 +291,29 @@ async function runTask(task: string, mode: Mode): Promise<void> {
 
       // ── 4 · redact ──────────────────────────────────────────────────────
       mk = performance.now();
-      let { context, applied, stats } = redact({ graph, findings, vault, task, mode, history, profile });
+      let { context, applied, stats, vaultLocked } = redact({ graph, findings, vault, task, mode, history, profile });
+
+      // Say this once and stop, rather than asking the user to type in a name
+      // the extension already has. Fifteen questions in a row is also exactly
+      // what an unresponsive Approve button looks like.
+      //
+      // Two ways to reach this. The redactor reports it when it sees a field the
+      // profile could serve, which is the precise signal. But that depends on a
+      // detector having classified the field, and on a blank form it sometimes
+      // has not — so a fill-shaped task with no profile at all is treated the
+      // same way. Better a redundant check than a question storm.
+      const noProfileForFill = !profile && /\b(fill|complete|populate|autofill)\b/i.test(task);
+      if ((vaultLocked || noProfileForFill) && !warnedLocked) {
+        warnedLocked = true;
+        log({
+          step,
+          route: "local",
+          result: "blocked",
+          note: "This page has fields your profile could fill, but My data is locked. Open it in the side panel and unlock, then run this again.",
+          timings: done(t, t0),
+        });
+        return fail("My data is locked — unlock it in the side panel to fill personal fields.");
+      }
       t.redact = round(performance.now() - mk);
 
       void chrome.tabs

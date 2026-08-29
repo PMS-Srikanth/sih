@@ -17,8 +17,15 @@ export type RouteDecision =
 
 const CLICK_VERBS =
   /\b(click|press|tap|hit|choose|select|open|go to|submit|save|sign ?in|log ?in|continue|next|apply|send|search|download|upload|add|edit|create)\b/i;
+/** Asking for a form to be filled is a multi-step plan, not one control. */
+const FILL_VERBS = /\b(fill|complete|populate|autofill)\b|enter my/i;
 const SCROLL_VERBS = /\b(scroll|page down|page up)\b/i;
-const CLEAR_VERBS = /\b(clear|empty|reset)\b/i;
+/**
+ * "remove", "delete" and "wipe" are what people actually type when they mean
+ * "take the existing data out of this form". Leaving them out sent the task to
+ * the server, which then tried to find a control called "remove" and gave up.
+ */
+const CLEAR_VERBS = /\b(clear|empty|reset|remove|delete|wipe|erase|blank)\b/i;
 
 /** A bare control name ("save draft") must match far more tightly than a
  *  verb phrase ("click save draft") before we act without the server. */
@@ -46,6 +53,14 @@ export function route(graph: RawScreenGraph, task: string, stepsTaken: number): 
       why: "task is a bare clear instruction",
       confidence: 0.99,
     };
+  }
+
+  // A compound task — "fill this form and register" — is not a click, even
+  // though it contains a control name. Resolving it locally clicked Register on
+  // an empty form and called the task done. Filling needs a plan, so anything
+  // that asks for both goes to the server.
+  if (FILL_VERBS.test(task) && !/^\s*(click|press|tap|hit)\b/i.test(task)) {
+    return { route: "server", why: "the task asks for a fill, which needs a plan rather than one control" };
   }
 
   const quoted = task.match(/["'“]([^"'”]{2,40})["'”]/);

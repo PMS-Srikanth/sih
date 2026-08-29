@@ -51,14 +51,14 @@
     <div>
       <h2>Demo controls</h2>
       <p class="muted" style="margin:0">
-        The fields below start filled with <b>sample data</b> — this page stands in for a
-        site that already holds your details. Clear it to test filling from your own
-        encrypted profile instead.
+        This form ships <b>empty</b> — nothing here is anyone's real data. Ask Cordon to
+        fill it from your own encrypted profile, or load invented sample data to watch the
+        privacy engine redact a form that already has values in it.
       </p>
     </div>
     <div class="row">
       <button type="button" id="clearAll">Clear all fields</button>
-      <button type="button" id="restore">Restore sample data</button>
+      <button type="button" id="restore">Load sample data</button>
     </div>
   </div>
 
@@ -79,31 +79,31 @@
     <div class="grid">
       <div>
         <label for="fullname">Full name</label>
-        <input id="fullname" name="fullname" autocomplete="name" value="Srikar Gautam" />
+        <input id="fullname" name="fullname" autocomplete="name" />
       </div>
       <div>
         <label for="email">Email address</label>
-        <input id="email" name="email" type="email" autocomplete="email" value="srikar.gautam@gmail.com" />
+        <input id="email" name="email" type="email" autocomplete="email" />
       </div>
       <div>
         <label for="phone">Mobile number</label>
-        <input id="phone" name="phone" type="tel" autocomplete="tel" value="9876543210" />
+        <input id="phone" name="phone" type="tel" autocomplete="tel" />
       </div>
       <div>
         <label for="dob">Date of birth</label>
-        <input id="dob" name="dob" autocomplete="bday" value="14/03/2003" />
+        <input id="dob" name="dob" autocomplete="bday" />
       </div>
       <div class="full">
         <label for="address">Street address</label>
-        <input id="address" name="address" autocomplete="street-address" value="42 Banjara Hills, Hyderabad 500034" />
+        <input id="address" name="address" autocomplete="street-address" />
       </div>
       <div>
         <label for="pan">PAN</label>
-        <input id="pan" name="pan" value="ABCPG1234K" />
+        <input id="pan" name="pan" />
       </div>
       <div>
         <label for="aadhaar">Aadhaar number</label>
-        <input id="aadhaar" name="aadhaar" value="2234 5678 9018" />
+        <input id="aadhaar" name="aadhaar" />
       </div>
     </div>
   </form>
@@ -114,11 +114,11 @@
     <div class="grid">
       <div>
         <label for="pw">Password</label>
-        <input id="pw" name="pw" type="password" autocomplete="new-password" value="Hunter2!SuperSecret" />
+        <input id="pw" name="pw" type="password" autocomplete="new-password" />
       </div>
       <div>
         <label for="otp">Verification code</label>
-        <input id="otp" name="otp" autocomplete="one-time-code" value="482913" />
+        <input id="otp" name="otp" autocomplete="one-time-code" />
       </div>
     </div>
   </form>
@@ -356,11 +356,21 @@
     b.textContent = text;
   }
 
-  // Captured from the markup at load, so "restore" cannot drift out of step
-  // with what the page actually ships with.
-  const SAMPLE = Object.fromEntries(
-    [...FIELDS, "pw", "otp"].filter(el).map((f) => [f, el(f).value]),
-  );
+  // Sample data lives HERE, not in the markup. The page ships blank, so nothing
+  // on it is anyone's real data and the default demo is "fill this from my own
+  // encrypted profile". Load it only when you want to show redaction of a form
+  // that already has values in it.
+  const SAMPLE = {
+    fullname: "Ada Sharma",
+    email: "ada.sharma@example.in",
+    phone: "9845017632",
+    dob: "14/03/2003",
+    address: "42 Banjara Hills, Hyderabad 500034",
+    pan: "ABCPG1234K",
+    aadhaar: "2234 5678 9018",
+    pw: "Hunter2!SuperSecret",
+    otp: "482913",
+  };
 
   el("clearAll").addEventListener("click", () => {
     for (const f of Object.keys(SAMPLE)) if (el(f)) el(f).value = "";
@@ -375,8 +385,8 @@
 
   el("restore").addEventListener("click", () => {
     for (const [f, v] of Object.entries(SAMPLE)) if (el(f)) el(f).value = v;
-    showBanner("save", "Sample data restored.");
-    say("Sample data restored.");
+    showBanner("save", "Sample data loaded — these are invented values, not anyone's real details.");
+    say("Sample data loaded.");
   });
 
   el("save").addEventListener("click", saveDraft);

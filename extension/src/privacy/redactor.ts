@@ -18,6 +18,12 @@ export const SCHEMA = "cordon/redaction@1";
 export interface RedactResult {
   context: SanitizedContext;
   /**
+   * The page has fields the user's profile could fill, but the vault is locked
+   * or was never set up. Reported so the run can say that once, rather than
+   * asking the user to retype data they already gave the extension.
+   */
+  vaultLocked: boolean;
+  /**
    * Only the findings that actually changed the payload. A detector firing on an
    * EMPTY field is a correct classification but not a redaction — reporting it
    * as one would overstate what was removed.
@@ -63,6 +69,8 @@ export function redact({ graph, findings, vault, task, mode, history, image, pro
   // What kind of value does each field want? Reuses the DOM classifier, so an
   // EMPTY field still gets a type — which is what makes filling a blank form
   // possible without the server ever seeing profile data.
+  // Set when a field exists that the profile could fill, if only it were open.
+  let vaultLocked = false;
   const wantedClass = new Map<string, PiiClass>();
   if (profile) {
     for (const d of detectDom(graph.elements)) {
@@ -133,8 +141,18 @@ export function redact({ graph, findings, vault, task, mode, history, image, pro
       // say so plainly, so the planner asks the user rather than guessing.
       const cls = wantedClass.get(el.id);
       const slot = profile && cls ? slotFor(profile, cls) : null;
-      if (slot) safe.wants = vault.mint(slot.entry.value, cls!, el.id);
-      else if (worthAsking(el)) safe.empty = true;
+      if (slot) {
+        safe.wants = vault.mint(slot.entry.value, cls!, el.id);
+      } else if (!profile && cls) {
+        // The vault is locked or was never set up. This field is one the device
+        // COULD answer — saying "nothing on your device answers it" would be a
+        // lie, and it turns a single "unlock your vault" into a question per
+        // field, which reads as a broken button. Leave it unflagged; the
+        // orchestrator reports the locked vault once instead.
+        vaultLocked = true;
+      } else if (worthAsking(el)) {
+        safe.empty = true;
+      }
     }
 
     // ── the element's visible text ─────────────────────────────────────────
@@ -181,7 +199,7 @@ export function redact({ graph, findings, vault, task, mode, history, image, pro
     history,
   };
 
-  return { context, applied, stats };
+  return { context, applied, stats, vaultLocked };
 }
 
 /**

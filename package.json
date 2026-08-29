@@ -16,7 +16,8 @@
     "vlm-check": "node eval/vlm-check.mjs",
     "browser-check": "node eval/browser-check.mjs",
     "live-model": "node eval/live-model-check.mjs",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "report": "node scripts/build-report.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.287",

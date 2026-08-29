@@ -361,3 +361,27 @@ footer input { font: 500 11px var(--mono); padding: 6px 9px; }
 
 /* The animation time, stated rather than hidden. */
 .tki.muted { color: var(--ink3); opacity: .75; font-style: italic; }
+
+/* The moment a prompt is answered. Without this, one question replacing another
+   is indistinguishable from a button that did nothing. */
+.confirm.acked { opacity: .55; transition: opacity .12s; }
+.confirm button:disabled { opacity: .5; cursor: default; }
+
+/* Which models are live. "Is the ViT actually running?" used to be
+   unanswerable from the UI — gated to one mode and degrading silently when its
+   weights are absent looks identical to never having been built. */
+.models { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.mrow { display: grid; grid-template-columns: 8px 1fr auto; gap: 4px 8px;
+  align-items: center; padding: 7px 9px; background: var(--surf);
+  border: 1px solid var(--line); border-radius: 6px; }
+.mdot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink3); }
+.mrow.loaded .mdot { background: var(--ok); }
+.mrow.unavailable .mdot { background: var(--bad); }
+.mname { font-size: 11.5px; font-weight: 600; color: var(--ink); }
+.mstate { font: 600 8.5px/1 var(--mono); text-transform: uppercase; letter-spacing: .05em;
+  color: var(--ink3); white-space: nowrap; }
+.mrow.loaded .mstate { color: var(--ok); }
+.mrow.unavailable .mstate { color: var(--bad); }
+.mnote { grid-column: 2 / -1; font-size: 9.5px; line-height: 1.4; color: var(--ink3); }
+.mnone { margin: 0; font-size: 10.5px; color: var(--ink3); padding: 8px 9px;
+  background: var(--surf); border: 1px solid var(--line); border-radius: 6px; }
