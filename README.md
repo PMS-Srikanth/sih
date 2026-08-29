@@ -5,21 +5,41 @@
 A browser extension where perception and privacy enforcement run on the user's device.
 The server reasons about the page without ever receiving a pixel, a password, or a name.
 
-> Phase 1 — the complete agent loop with no ML models in it yet. DOM + accessibility-tree
-> perception, calibrated PII detection, tight redaction, the verification gate, local-first
-> routing, grounded execution. The vision channel lands in phase 2.
-> See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+> The full loop is implemented: DOM + accessibility-tree perception, coverage-guided
+> vision (UltraFace always, a ViT classifier in Thorough mode), calibrated PII detection,
+> redaction, a verifier with a veto, local-first routing, and grounded execution with a
+> read-back check. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
 ## Run it
 
+You need Node 20+. Nothing else — no Python, no GPU, no API key.
+
 ```bash
 npm install
 npm run build          # → dist/
+```
+
+Then, in two more terminals:
+
+```bash
 npm run server         # → http://127.0.0.1:8787/agent
 npm run demo           # → http://127.0.0.1:8788/
 ```
+
+`dist/` is not committed, so **run `npm run build` after cloning** or Chrome will have
+nothing to load. The side-panel header prints a build stamp: if it does not match what
+`npm run build` printed, the extension was not reloaded and you are looking at stale code.
+
+Optional, and only if you want Thorough mode's ViT classifier:
+
+```bash
+npm run fetch-models   # 84 MB, one-off
+```
+
+Everything works without it — Thorough mode simply falls back to the face detector
+alone, which is why it is not in the repository.
 
 Load the extension:
 
@@ -34,11 +54,23 @@ Then open <http://127.0.0.1:8788/application.html>, click the Cordon icon, and t
 | `Click "Save draft"` | **Local route.** Resolved on device — 0 network calls, no redaction work |
 | `What sensitive data is on this page?` | **Server route** returning *data* rather than an action |
 | `Fill this application from my profile` | Full loop — detect, redact, verify, transmit, resolve, ground, execute |
-| `Submit application` | **Human confirmation** before an irreversible action |
+| `Submit application` | **Human confirmation** before an irreversible action — and the value is editable before you approve it |
+| `Fill this form` on `job-form.html` | The agent hits **Years of experience**, which no stored data can answer, and asks you. What you type is filled in locally and never sent |
 
-The page is overlaid with the ScreenGraph as it is perceived, and with solid blocks
-over everything the privacy engine redacted. The side panel shows per-step timings and
-the privacy receipt.
+While it runs, a cursor travels to each control the agent chose, a ring closes on it, and
+a caption names the action — so the work is visible, not just its result. The captions name
+the *field*, never the value.
+
+The side panel carries four things worth showing:
+
+- **Your view / Server's view** — the same page with your real data in it, and with
+  everything sensitive already gone. Both are true; the overlay is only one of them.
+- **Network traffic** — every request that left the machine, both bodies, both sizes,
+  round trip. A local-only run leaves this list empty.
+- **Resources** — which processor ran the model, model memory, how much of the frame the
+  DOM already explained so no model had to look at it, and where the time went.
+- **What the agent entered** — the values that landed in the page, hidden until you
+  reveal them, so you can audit your own run.
 
 ---
 

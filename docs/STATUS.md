@@ -1,6 +1,6 @@
 # Cordon — Build Tracker
 
-**Living document. Updated on every change.** Last updated: 2026-08-28, build `23:41`.
+**Living document. Updated on every change.** Last updated: 2026-08-29, build `07:10`.
 
 The rule for this file: nothing is marked ✅ unless it runs and there is a way to check it.
 Aspirations live in the roadmap, not in the status column.
@@ -13,17 +13,17 @@ Aspirations live in the roadmap, not in the status column.
 |---|---|---|
 | Client-side extension, **Chrome** | ✅ | `dist/` loads unpacked, tested |
 | Client-side extension, **Firefox** | ⚠️ | `manifest.firefox.json` builds; **never loaded once** |
-| Local **ViT or equivalent CV model** reads the screen | ✅ | UltraFace RFB-320, 1.2 MB ONNX. `npm run model-check` |
+| Local **ViT or equivalent CV model** reads the screen | ✅ | UltraFace RFB-320 (1.2 MB) always; `Xenova/vit-base-patch16-224` in Thorough mode |
 | ...running **via WebGPU** | ✅ | ORT `executionProviders: ["webgpu"]`, WASM+SIMD fallback |
 | ...and **takes decision based on that** | ✅ | `agent/router.ts` — local-first; server only on escalation |
 | Sanitize **before any network request** | ✅ | `privacy/verifier.ts` gates `transport.send()` |
-| Detect PII via **DOM tags or any other method** | ⚠️ | DOM + regex/checksums + vision. **NER and OCR missing** |
+| Detect PII via **DOM tags or any other method** | ⚠️ | DOM + regex/checksums + vision (detector + ViT). **NER and OCR missing** |
 | **Dynamically** detect and redact | ✅ | Per-step, on the live page, incl. content added after load |
 | Blur faces / black out passwords / mask PII | ✅ | Solid masks composited into the bitmap; passwords removed outright |
 | Only **anonymized, unidentifiable** data transmitted | ✅ | V1–V6; payload inspector shows the literal bytes |
 | Server **aware of the redaction scheme** | ✅ | `cordon/redaction@1` handle grammar in the system prompt |
 | Server returns **data or a UI action** | ✅ | 4 response types: action / plan / data / ask_user |
-| Server model: **offline-deployable open-weights** | ❌ | Rule-based Node planner. **Llama / Qwen not wired** |
+| Server model: **offline-deployable open-weights** | ⚠️ | `server/vlm.mjs` speaks the OpenAI-compatible API (vLLM / Ollama / llama.cpp). Falls back to rules when unset. **Not yet demoed against a running model** |
 | **End-to-end task** demonstrated | ⚠️ | Works on demo pages; not yet on a real third-party site |
 | Balance **latency vs accuracy** | ✅ | Fast / Balanced / Thorough change real behaviour |
 
@@ -31,10 +31,10 @@ Aspirations live in the roadmap, not in the status column.
 
 | # | Metric | Weight | State |
 |---|---|---|---|
-| 1 | Accuracy of visual context | 25% | ⚠️ DOM ✅ + face detection ✅. **No labelled eval set yet** |
+| 1 | Accuracy of visual context | 25% | ⚠️ DOM ✅ + face detection ✅ + ViT ✅. **No labelled eval set yet** |
 | 2 | PII recall + precision | 20% | ✅ P 1.000 / R 1.000 on fixture. 2 of 4 detectors |
 | 3 | Precision of redaction | 20% | ✅ span-offset text, tight bboxes, V3 verified |
-| 4 | Client resource use | 20% | ✅ 92% of frame never analysed (measured) |
+| 4 | Client resource use | 20% | ✅ 92% of frame never analysed; **Resources panel shows backend, memory, passes, stage timings** |
 | 5 | End-to-end latency | 15% | ✅ most steps 0 network; per-stage timings shown |
 
 ---
@@ -70,7 +70,7 @@ full pipeline; that is the premise, not a limitation to work around.
 - ✅ WebGPU with real WASM fallback
 - ✅ Two-pass: whole frame, then unexplained crops at native scale
 - ✅ NMS, 4420 priors → ≤24 boxes
-- ❌ ViT-Tiny crop classifier (id_document / signature / QR)
+- ✅ ViT classifier on unexplained crops (Thorough mode only, calibrated ×0.5)
 - ❌ OCR on document-like crops
 
 ### Privacy
@@ -97,13 +97,21 @@ full pipeline; that is the premise, not a limitation to work around.
 - ✅ Speaks `cordon/redaction@1`, handles only
 - ✅ Output guard rejects literal PII
 - ✅ 4 response types
-- ❌ Open-weights VLM (Llama-3.2-Vision / Qwen2.5-VL via vLLM) — **Phase 4**
+- ⚠️ Open-weights VLM — `vlm.mjs` implemented against the OpenAI-compatible API; set
+  `CORDON_VLM_URL` to point at Ollama or vLLM. Never demoed against a live model
+- ✅ Asks the user about blank fields nothing can fill, at most once per field
 - ❌ Guided JSON decoding
 
 ### UI
 - ✅ Step log with per-stage timing bars
 - ✅ Privacy receipt — counts, detectors, verifier checks
-- ✅ **Payload inspector** — the literal JSON that crossed
+- ✅ **Payload inspector** — the literal JSON that crossed, and the reply that came back
+- ✅ **Network traffic panel** — every request, both bodies, both sizes, round trip
+- ✅ **Resources panel** — compute backend, model memory, frame skipped, stage breakdown
+- ✅ **Your view / Server's view** switch
+- ✅ **Agent visualiser** — cursor, ring and caption per action, in the page
+- ✅ **Editable confirmations** — correct a value before approving; secrets stay hidden
+- ✅ **What the agent entered** — audit panel, values masked until revealed
 - ✅ Encrypted profile editor with lock states
 - ✅ Live overlay tracking scroll
 - ✅ Build stamp
@@ -126,6 +134,18 @@ Current: **all green.**
 
 | Date | Change | Why |
 |---|---|---|
+| 08-29 | Demo pages actually work | Buttons only raised a toast; you could not tell a real fill from a click |
+| 08-29 | Stop clears the confirmation | Panel stayed stuck on a question about a dead run |
+| 08-29 | `waitForConfirm` settles the prior wait | Overwriting the resolver stranded the awaiting step forever |
+| 08-29 | `ask_user.target` kept in `transport.validate` | Was silently dropped, defeating the ask-once guard |
+| 08-29 | Server reply captured and shown | Redaction was provable; that the server could still work on it was not |
+| 08-29 | Resources panel | Metric 4 is 20% of the marks and lived only in a terminal |
+| 08-29 | Agent visualiser (`content/actor.ts`) | The only thing on screen was what we hide, never what we do |
+| 08-29 | Editable confirm / question box | Approving a value you cannot see or change is not consent |
+| 08-29 | `SafeElement.empty` + ask-the-user path | Blank unfillable fields (experience, notice) stalled the run |
+| 08-29 | Network traffic panel | "Show me everything that left the machine" needed one list |
+| 08-29 | Your view / Server's view | Own data looked permanently blacked out on the user's own screen |
+| 08-29 | Demo controls on application.html | Prefill read as baked-in state rather than sample data |
 | 08-28 | Ingestion check after fill | "is the entered data correct" — read back and compare |
 | 08-27 | **Media elements added to ScreenGraph** | `<img>` was in no selector; vision channel had nothing to anchor to |
 | 08-27 | Payload inspector in receipt | Privacy claim must be checkable, not asserted |
@@ -145,8 +165,10 @@ Current: **all green.**
 
 ## 6. Next, in order
 
-1. **Open-weights VLM on the server** — the last hard PS requirement. Qwen2.5-VL or
-   Llama-3.2-Vision behind vLLM, guided JSON. One function (`plan()`) changes.
+1. **Run the VLM once.** The code is written and falls back cleanly; what is missing is
+   evidence it has ever produced a correct action against a real model. `ollama pull
+   qwen2.5:7b`, set `CORDON_VLM_URL`, and watch one task through. Until that happens this
+   row is a claim, not a result.
 2. **Labelled eval set for metric 1** — 40–60 pages with ground-truth boxes and roles.
    25% of the marks currently has no number attached to it.
 3. **Local NER** — the third detector, for names in prose.
